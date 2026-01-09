@@ -1,5 +1,7 @@
 package via
 
+import "github.com/alexedwards/scs/v2"
+
 type LogLevel int
 
 const (
@@ -30,4 +32,9 @@ type Options struct {
 
 	// Plugins to extend the capabilities of the `Via` application.
 	Plugins []Plugin
+
+	// SessionManager enables cookie-based sessions. If set, Via wraps handlers
+	// with scs LoadAndSave middleware. Configure the session manager before
+	// passing it (lifetime, cookie settings, store, etc).
+	SessionManager *scs.SessionManager
 }

@@ -2,6 +2,7 @@ package via
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -29,6 +30,7 @@ type Context struct {
 	signals           *sync.Map
 	mu                sync.RWMutex
 	ctxDisposedChan   chan struct{}
+	reqCtx            context.Context
 }
 
 // View defines the UI rendered by this context.
@@ -358,6 +360,16 @@ func (c *Context) GetPathParam(param string) string {
 		return p
 	}
 	return ""
+}
+
+// Session returns the session for this context.
+// Session data persists across page views for the same browser.
+// Returns a no-op session if no SessionManager is configured.
+func (c *Context) Session() *Session {
+	return &Session{
+		ctx:     c.reqCtx,
+		manager: c.app.sessionManager,
+	}
 }
 
 func newContext(id string, route string, v *V) *Context {

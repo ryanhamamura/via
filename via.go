@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/alexedwards/scs/v2"
 	"github.com/go-via/via/h"
 	"github.com/starfederation/datastar-go/datastar"
 )
@@ -37,6 +38,7 @@ type V struct {
 	documentHeadIncludes []h.H
 	documentFootIncludes []h.H
 	devModePageInitFnMap map[string]func(*Context)
+	sessionManager       *scs.SessionManager
 }
 
 func (v *V) logFatal(format string, a ...any) {
@@ -102,6 +104,9 @@ func (v *V) Config(cfg Options) {
 	if cfg.ServerAddress != "" {
 		v.cfg.ServerAddress = cfg.ServerAddress
 	}
+	if cfg.SessionManager != nil {
+		v.sessionManager = cfg.SessionManager
+	}
 }
 
 // AppendToHead appends the given h.H nodes to the head of the base HTML document.
@@ -162,6 +167,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 		}
 		id := fmt.Sprintf("%s_/%s", route, genRandID())
 		c := newContext(id, route, v)
+		c.reqCtx = r.Context()
 		routeParams := extractParams(route, r.URL.Path)
 		c.injectRouteParams(routeParams)
 		initContextFn(c)
@@ -235,7 +241,11 @@ func (v *V) getCtx(id string) (*Context, error) {
 // Start starts the Via HTTP server on the given address.
 func (v *V) Start() {
 	v.logInfo(nil, "via started at [%s]", v.cfg.ServerAddress)
-	log.Fatalf("[fatal] %v", http.ListenAndServe(v.cfg.ServerAddress, v.mux))
+	handler := http.Handler(v.mux)
+	if v.sessionManager != nil {
+		handler = v.sessionManager.LoadAndSave(v.mux)
+	}
+	log.Fatalf("[fatal] %v", http.ListenAndServe(v.cfg.ServerAddress, handler))
 }
 
 // HTTPServeMux returns the underlying HTTP request multiplexer to enable user extentions, middleware and
@@ -364,6 +374,7 @@ func New() *V {
 		mux:                  mux,
 		contextRegistry:      make(map[string]*Context),
 		devModePageInitFnMap: make(map[string]func(*Context)),
+		sessionManager:       scs.New(),
 		cfg: Options{
 			DevMode:       false,
 			ServerAddress: ":3000",
@@ -396,6 +407,7 @@ func New() *V {
 			v.logErr(nil, "sse stream failed to start: %v", err)
 			return
 		}
+		c.reqCtx = r.Context()
 
 		sse := datastar.NewSSE(w, r, datastar.WithCompression(datastar.WithBrotli(datastar.WithBrotliLevel(5))))
 
@@ -456,6 +468,7 @@ func New() *V {
 			v.logErr(nil, "action '%s' failed: %v", actionID, err)
 			return
 		}
+		c.reqCtx = r.Context()
 		actionFn, err := c.getActionFn(actionID)
 		if err != nil {
 			v.logDebug(c, "action '%s' failed: %v", actionID, err)
