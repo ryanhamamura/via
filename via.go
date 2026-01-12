@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -359,6 +360,8 @@ const (
 	patchTypeElements = iota
 	patchTypeSignals
 	patchTypeScript
+	patchTypeRedirect
+	patchTypeReplaceURL
 )
 
 type patch struct {
@@ -451,6 +454,21 @@ func New() *V {
 					if err := sse.ExecuteScript(patch.content, datastar.WithExecuteScriptAutoRemove(true)); err != nil {
 						if sse.Context().Err() == nil {
 							v.logErr(c, "ExecuteScript failed: %v", err)
+						}
+					}
+				case patchTypeRedirect:
+					if err := sse.Redirect(patch.content); err != nil {
+						if sse.Context().Err() == nil {
+							v.logErr(c, "Redirect failed: %v", err)
+						}
+					}
+				case patchTypeReplaceURL:
+					parsedURL, err := url.Parse(patch.content)
+					if err != nil {
+						v.logErr(c, "ReplaceURL failed to parse URL: %v", err)
+					} else if err := sse.ReplaceURL(*parsedURL); err != nil {
+						if sse.Context().Err() == nil {
+							v.logErr(c, "ReplaceURL failed: %v", err)
 						}
 					}
 				}

@@ -318,6 +318,37 @@ func (c *Context) ExecScript(s string) {
 	c.sendPatch(patch{patchTypeScript, s})
 }
 
+// Redirect navigates the browser to the given URL.
+// This triggers a full page navigation - the current context will be disposed
+// and a new context created at the destination URL.
+func (c *Context) Redirect(url string) {
+	if url == "" {
+		c.app.logWarn(c, "redirect failed: empty url")
+		return
+	}
+	c.sendPatch(patch{patchTypeRedirect, url})
+}
+
+// Redirectf navigates the browser to a URL constructed from the format string and arguments.
+func (c *Context) Redirectf(format string, a ...any) {
+	c.Redirect(fmt.Sprintf(format, a...))
+}
+
+// ReplaceURL updates the browser's URL and history without triggering navigation.
+// Useful for updating query params or path to reflect UI state changes.
+func (c *Context) ReplaceURL(url string) {
+	if url == "" {
+		c.app.logWarn(c, "replace url failed: empty url")
+		return
+	}
+	c.sendPatch(patch{patchTypeReplaceURL, url})
+}
+
+// ReplaceURLf updates the browser's URL using a format string.
+func (c *Context) ReplaceURLf(format string, a ...any) {
+	c.ReplaceURL(fmt.Sprintf(format, a...))
+}
+
 // stopAllRoutines stops all go routines tied to this Context preventing goroutine leaks.
 func (c *Context) stopAllRoutines() {
 	select {
