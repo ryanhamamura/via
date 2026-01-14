@@ -79,7 +79,6 @@ func HTML5(p HTML5Props) H {
 		Body:        retype(p.Body),
 		HTMLAttrs:   retype(p.HTMLAttrs),
 	}
-	gp.Head = append(gp.Head, Script(Type("module"), Src("/_datastar.js")))
 	return gc.HTML5(gp)
 }
 

@@ -28,6 +28,10 @@ func TestPageRoute(t *testing.T) {
 
 func TestDatastarJS(t *testing.T) {
 	v := New()
+	v.Page("/", func(c *Context) {
+		c.View(func() h.H { return h.Div() })
+	})
+
 	req := httptest.NewRequest("GET", "/_datastar.js", nil)
 	w := httptest.NewRecorder()
 	v.mux.ServeHTTP(w, req)
@@ -35,6 +39,54 @@ func TestDatastarJS(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/javascript", w.Header().Get("Content-Type"))
 	assert.Contains(t, w.Body.String(), "🖕JS_DS🚀")
+}
+
+func TestCustomDatastarContent(t *testing.T) {
+	customScript := []byte("// Custom Datastar Script")
+	v := New()
+	v.Config(Options{
+		Datastar: &DatastarConfig{
+			Content: customScript,
+		},
+	})
+	v.Page("/", func(c *Context) {
+		c.View(func() h.H { return h.Div() })
+	})
+
+	req := httptest.NewRequest("GET", "/_datastar.js", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/javascript", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), "Custom Datastar Script")
+}
+
+func TestCustomDatastarPath(t *testing.T) {
+	v := New()
+	v.Config(Options{
+		Datastar: &DatastarConfig{
+			Path: "/assets/datastar.js",
+		},
+	})
+	v.Page("/test", func(c *Context) {
+		c.View(func() h.H { return h.Div() })
+	})
+
+	// Custom path should serve the script
+	req := httptest.NewRequest("GET", "/assets/datastar.js", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/javascript", w.Header().Get("Content-Type"))
+	assert.Contains(t, w.Body.String(), "🖕JS_DS🚀")
+
+	// Page should reference the custom path in script tag
+	req2 := httptest.NewRequest("GET", "/test", nil)
+	w2 := httptest.NewRecorder()
+	v.mux.ServeHTTP(w2, req2)
+	assert.Contains(t, w2.Body.String(), `src="/assets/datastar.js"`)
 }
 
 func TestSignal(t *testing.T) {

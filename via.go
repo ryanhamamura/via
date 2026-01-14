@@ -32,14 +32,17 @@ var datastarJS []byte
 // V is the root application.
 // It manages page routing, user sessions, and SSE connections for live updates.
 type V struct {
-	cfg                  Options
-	mux                  *http.ServeMux
-	contextRegistry      map[string]*Context
-	contextRegistryMutex sync.RWMutex
-	documentHeadIncludes []h.H
-	documentFootIncludes []h.H
-	devModePageInitFnMap map[string]func(*Context)
-	sessionManager       *scs.SessionManager
+	cfg                       Options
+	mux                       *http.ServeMux
+	contextRegistry           map[string]*Context
+	contextRegistryMutex      sync.RWMutex
+	documentHeadIncludes      []h.H
+	documentFootIncludes      []h.H
+	devModePageInitFnMap      map[string]func(*Context)
+	sessionManager            *scs.SessionManager
+	datastarPath              string
+	datastarContent           []byte
+	datastarHandlerRegistered bool
 }
 
 func (v *V) logFatal(format string, a ...any) {
@@ -108,6 +111,14 @@ func (v *V) Config(cfg Options) {
 	if cfg.SessionManager != nil {
 		v.sessionManager = cfg.SessionManager
 	}
+	if cfg.Datastar != nil {
+		if cfg.Datastar.Content != nil {
+			v.datastarContent = cfg.Datastar.Content
+		}
+		if cfg.Datastar.Path != "" {
+			v.datastarPath = cfg.Datastar.Path
+		}
+	}
 }
 
 // AppendToHead appends the given h.H nodes to the head of the base HTML document.
@@ -141,6 +152,7 @@ func (v *V) AppendToFoot(elements ...h.H) {
 //		})
 //	})
 func (v *V) Page(route string, initContextFn func(c *Context)) {
+	v.ensureDatastarHandler()
 	// check for panics
 	func() {
 		defer func() {
@@ -176,7 +188,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 		if v.cfg.DevMode {
 			v.devModePersist(c)
 		}
-		headElements := []h.H{}
+		headElements := []h.H{h.Script(h.Type("module"), h.Src(v.datastarPath))}
 		headElements = append(headElements, v.documentHeadIncludes...)
 		headElements = append(headElements,
 			h.Meta(h.Data("signals", fmt.Sprintf("{'via-ctx':'%s'}", id))),
@@ -256,6 +268,17 @@ func (v *V) Start() {
 // Concurrent handler registration is not safe.
 func (v *V) HTTPServeMux() *http.ServeMux {
 	return v.mux
+}
+
+func (v *V) ensureDatastarHandler() {
+	if v.datastarHandlerRegistered {
+		return
+	}
+	v.datastarHandlerRegistered = true
+	v.mux.HandleFunc("GET "+v.datastarPath, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/javascript")
+		_, _ = w.Write(v.datastarContent)
+	})
 }
 
 func (v *V) devModePersist(c *Context) {
@@ -378,6 +401,8 @@ func New() *V {
 		contextRegistry:      make(map[string]*Context),
 		devModePageInitFnMap: make(map[string]func(*Context)),
 		sessionManager:       scs.New(),
+		datastarPath:         "/_datastar.js",
+		datastarContent:      datastarJS,
 		cfg: Options{
 			DevMode:       false,
 			ServerAddress: ":3000",
@@ -385,11 +410,6 @@ func New() *V {
 			DocumentTitle: "⚡ Via",
 		},
 	}
-
-	v.mux.HandleFunc("GET /_datastar.js", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/javascript")
-		_, _ = w.Write(datastarJS)
-	})
 
 	v.mux.HandleFunc("GET /_sse", func(w http.ResponseWriter, r *http.Request) {
 		isReconnect := false
