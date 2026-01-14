@@ -45,9 +45,7 @@ func TestCustomDatastarContent(t *testing.T) {
 	customScript := []byte("// Custom Datastar Script")
 	v := New()
 	v.Config(Options{
-		Datastar: &DatastarConfig{
-			Content: customScript,
-		},
+		DatastarContent: customScript,
 	})
 	v.Page("/", func(c *Context) {
 		c.View(func() h.H { return h.Div() })
@@ -65,9 +63,7 @@ func TestCustomDatastarContent(t *testing.T) {
 func TestCustomDatastarPath(t *testing.T) {
 	v := New()
 	v.Config(Options{
-		Datastar: &DatastarConfig{
-			Path: "/assets/datastar.js",
-		},
+		DatastarPath: "/assets/datastar.js",
 	})
 	v.Page("/test", func(c *Context) {
 		c.View(func() h.H { return h.Div() })

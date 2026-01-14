@@ -2,17 +2,6 @@ package via
 
 import "github.com/alexedwards/scs/v2"
 
-// DatastarConfig configures a custom Datastar.js script.
-type DatastarConfig struct {
-	// Content is the Datastar.js script content.
-	// If nil, the embedded default is used.
-	Content []byte
-
-	// Path is the URL path where the script is served.
-	// Defaults to "/_datastar.js" if empty.
-	Path string
-}
-
 type LogLevel int
 
 const (
@@ -49,7 +38,11 @@ type Options struct {
 	// passing it (lifetime, cookie settings, store, etc).
 	SessionManager *scs.SessionManager
 
-	// Datastar configures a custom Datastar.js script.
-	// If nil, Via uses its embedded default.
-	Datastar *DatastarConfig
+	// DatastarContent is the Datastar.js script content.
+	// If nil, the embedded default is used.
+	DatastarContent []byte
+
+	// DatastarPath is the URL path where the script is served.
+	// Defaults to "/_datastar.js" if empty.
+	DatastarPath string
 }

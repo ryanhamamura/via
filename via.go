@@ -39,10 +39,10 @@ type V struct {
 	documentHeadIncludes      []h.H
 	documentFootIncludes      []h.H
 	devModePageInitFnMap      map[string]func(*Context)
-	sessionManager            *scs.SessionManager
-	datastarPath              string
-	datastarContent           []byte
-	datastarHandlerRegistered bool
+	sessionManager  *scs.SessionManager
+	datastarPath    string
+	datastarContent []byte
+	datastarOnce    sync.Once
 }
 
 func (v *V) logFatal(format string, a ...any) {
@@ -111,13 +111,11 @@ func (v *V) Config(cfg Options) {
 	if cfg.SessionManager != nil {
 		v.sessionManager = cfg.SessionManager
 	}
-	if cfg.Datastar != nil {
-		if cfg.Datastar.Content != nil {
-			v.datastarContent = cfg.Datastar.Content
-		}
-		if cfg.Datastar.Path != "" {
-			v.datastarPath = cfg.Datastar.Path
-		}
+	if cfg.DatastarContent != nil {
+		v.datastarContent = cfg.DatastarContent
+	}
+	if cfg.DatastarPath != "" {
+		v.datastarPath = cfg.DatastarPath
 	}
 }
 
@@ -271,13 +269,11 @@ func (v *V) HTTPServeMux() *http.ServeMux {
 }
 
 func (v *V) ensureDatastarHandler() {
-	if v.datastarHandlerRegistered {
-		return
-	}
-	v.datastarHandlerRegistered = true
-	v.mux.HandleFunc("GET "+v.datastarPath, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/javascript")
-		_, _ = w.Write(v.datastarContent)
+	v.datastarOnce.Do(func() {
+		v.mux.HandleFunc("GET "+v.datastarPath, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/javascript")
+			_, _ = w.Write(v.datastarContent)
+		})
 	})
 }
 
