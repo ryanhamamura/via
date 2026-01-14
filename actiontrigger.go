@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 )
 
 // actionTrigger represents a trigger to an event handler fn

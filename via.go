@@ -22,7 +22,7 @@ import (
 	"sync"
 
 	"github.com/alexedwards/scs/v2"
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 	"github.com/starfederation/datastar-go/datastar"
 )
 

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 )
 
 // Context is the living bridge between Go and the browser.

@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/go-via/via"
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via"
+	"github.com/ryanhamamura/via/h"
 	_ "github.com/mattn/go-sqlite3"
 )
 

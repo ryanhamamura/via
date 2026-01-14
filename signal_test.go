@@ -4,7 +4,7 @@ import (
 	//	"net/http/httptest"
 	"testing"
 
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 	"github.com/stretchr/testify/assert"
 )
 

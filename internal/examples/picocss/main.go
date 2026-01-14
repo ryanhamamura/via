@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/go-via/via"
+	"github.com/ryanhamamura/via"
 	// "github.com/go-via/via-plugin-picocss/picocss"
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 )
 
 type Counter struct{ Count int }

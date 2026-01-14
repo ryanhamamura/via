@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-via/via/h"
+	"github.com/ryanhamamura/via/h"
 )
 
 // Signal represents a value that is reactive in the browser. Signals

@@ -3,9 +3,9 @@ package main
 import (
 	"strconv"
 
-	"github.com/go-via/via"
+	"github.com/ryanhamamura/via"
 	// "github.com/go-via/via-plugin-picocss/picocss"
-	. "github.com/go-via/via/h"
+	. "github.com/ryanhamamura/via/h"
 )
 
 func main() {
