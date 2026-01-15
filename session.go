@@ -2,10 +2,33 @@ package via
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
+	"github.com/alexedwards/scs/sqlite3store"
 	"github.com/alexedwards/scs/v2"
 )
+
+// NewSQLiteSessionManager creates a session manager using SQLite for persistence.
+// Creates the sessions table if it doesn't exist.
+// The returned manager can be configured further (Lifetime, Cookie settings, etc.)
+// before passing to Options.SessionManager.
+func NewSQLiteSessionManager(db *sql.DB) (*scs.SessionManager, error) {
+	_, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS sessions (
+			token TEXT PRIMARY KEY,
+			data BLOB NOT NULL,
+			expiry REAL NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS sessions_expiry_idx ON sessions(expiry);
+	`)
+	if err != nil {
+		return nil, err
+	}
+	sm := scs.New()
+	sm.Store = sqlite3store.New(db)
+	return sm, nil
+}
 
 // Session provides access to the user's session data.
 // Session data persists across page views for the same browser.

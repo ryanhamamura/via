@@ -1,13 +1,33 @@
 package main
 
 import (
+	"database/sql"
+	"log"
+
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
 )
 
 func main() {
+	// Open SQLite database for persistent sessions
+	db, err := sql.Open("sqlite3", "sessions.db")
+	if err != nil {
+		log.Fatalf("failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Create session manager with SQLite store
+	sm, err := via.NewSQLiteSessionManager(db)
+	if err != nil {
+		log.Fatalf("failed to create session manager: %v", err)
+	}
+
 	v := via.New()
-	v.Config(via.Options{ServerAddress: ":7331"})
+	v.Config(via.Options{
+		ServerAddress:  ":7331",
+		SessionManager: sm,
+	})
 
 	// Login page
 	v.Page("/login", func(c *via.Context) {
