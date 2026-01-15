@@ -408,10 +408,6 @@ func New() *V {
 	}
 
 	v.mux.HandleFunc("GET /_sse", func(w http.ResponseWriter, r *http.Request) {
-		isReconnect := false
-		if r.Header.Get("last-event-id") == "via" {
-			isReconnect = true
-		}
 		var sigs map[string]any
 		_ = datastar.ReadSignals(r, &sigs)
 		cID, _ := sigs["via-ctx"].(string)
@@ -436,11 +432,7 @@ func New() *V {
 		v.logDebug(c, "SSE connection established")
 
 		go func() {
-			if isReconnect || v.cfg.DevMode {
-				c.Sync()
-				return
-			}
-			c.SyncSignals()
+			c.Sync()
 		}()
 
 		for {
