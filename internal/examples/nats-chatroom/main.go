@@ -146,7 +146,27 @@ func main() {
 			if currentSub != nil {
 				currentSub.Unsubscribe()
 			}
-			sub, _ := c.Subscribe("chat.room."+room, func(data []byte) {
+
+			// Replay history from JetStream before subscribing for real-time
+			subject := "chat.room." + room
+			if hist, err := js.SubscribeSync(subject, nats.DeliverAll(), nats.OrderedConsumer()); err == nil {
+				for {
+					msg, err := hist.NextMsg(200 * time.Millisecond)
+					if err != nil {
+						break
+					}
+					var chatMsg ChatMessage
+					if json.Unmarshal(msg.Data, &chatMsg) == nil {
+						messages = append(messages, chatMsg)
+					}
+				}
+				hist.Unsubscribe()
+				if len(messages) > 50 {
+					messages = messages[len(messages)-50:]
+				}
+			}
+
+			sub, _ := c.Subscribe(subject, func(data []byte) {
 				var msg ChatMessage
 				if err := json.Unmarshal(data, &msg); err != nil {
 					return
