@@ -31,6 +31,8 @@ type Context struct {
 	mu                sync.RWMutex
 	ctxDisposedChan   chan struct{}
 	reqCtx            context.Context
+	subscriptions     []Subscription
+	subsMu            sync.Mutex
 }
 
 // View defines the UI rendered by this context.
@@ -400,6 +402,55 @@ func (c *Context) Session() *Session {
 	return &Session{
 		ctx:     c.reqCtx,
 		manager: c.app.sessionManager,
+	}
+}
+
+// Publish sends data to the given subject via the configured PubSub backend.
+// Returns an error if no PubSub is configured. No-ops during panic-check init.
+func (c *Context) Publish(subject string, data []byte) error {
+	if c.id == "" {
+		return nil
+	}
+	if c.app.pubsub == nil {
+		return fmt.Errorf("pubsub not configured")
+	}
+	return c.app.pubsub.Publish(subject, data)
+}
+
+// Subscribe creates a subscription on the configured PubSub backend.
+// The subscription is tracked for automatic cleanup when the context is disposed.
+// Returns an error if no PubSub is configured. No-ops during panic-check init.
+func (c *Context) Subscribe(subject string, handler func(data []byte)) (Subscription, error) {
+	if c.id == "" {
+		return nil, nil
+	}
+	if c.app.pubsub == nil {
+		return nil, fmt.Errorf("pubsub not configured")
+	}
+	sub, err := c.app.pubsub.Subscribe(subject, handler)
+	if err != nil {
+		return nil, err
+	}
+
+	// Track on page context for cleanup (components use parent, like signals/actions)
+	target := c
+	if c.isComponent() {
+		target = c.parentPageCtx
+	}
+	target.subsMu.Lock()
+	target.subscriptions = append(target.subscriptions, sub)
+	target.subsMu.Unlock()
+	return sub, nil
+}
+
+// unsubscribeAll cleans up all tracked subscriptions for this context and its components.
+func (c *Context) unsubscribeAll() {
+	c.subsMu.Lock()
+	subs := c.subscriptions
+	c.subscriptions = nil
+	c.subsMu.Unlock()
+	for _, sub := range subs {
+		sub.Unsubscribe()
 	}
 }
 

@@ -8,10 +8,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/delaneyj/toolbelt/embeddednats"
 	"github.com/nats-io/nats.go"
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
+	"github.com/ryanhamamura/via/vianats"
 )
 
 var (
@@ -35,147 +35,26 @@ func (u *UserInfo) Avatar() h.H {
 	return h.Div(h.Class("avatar"), h.Attr("title", u.Name), h.Text(u.Emoji))
 }
 
-// NATSChatroom manages NATS connections and per-context subscriptions
-type NATSChatroom struct {
-	nc   *nats.Conn
-	js   nats.JetStreamContext
-	subs map[string]*nats.Subscription
-	mu   sync.RWMutex
-}
-
-func NewNATSChatroom(nc *nats.Conn) (*NATSChatroom, error) {
-	js, err := nc.JetStream()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create or update the CHAT stream for durability
-	_, err = js.AddStream(&nats.StreamConfig{
-		Name:      "CHAT",
-		Subjects:  []string{"chat.>"},
-		Retention: nats.LimitsPolicy,
-		MaxMsgs:   1000, // Keep last 1000 messages per room
-		MaxAge:    24 * time.Hour,
-	})
-	if err != nil && err != nats.ErrStreamNameAlreadyInUse {
-		// Stream might already exist, that's fine
-		log.Printf("Note: stream creation returned: %v", err)
-	}
-
-	return &NATSChatroom{
-		nc:   nc,
-		js:   js,
-		subs: make(map[string]*nats.Subscription),
-	}, nil
-}
-
-// Subscribe creates a subscription for a context to a room
-func (chat *NATSChatroom) Subscribe(ctxID, room string, handler func(msg *ChatMessage)) error {
-	subject := "chat.room." + room
-
-	sub, err := chat.nc.Subscribe(subject, func(m *nats.Msg) {
-		var msg ChatMessage
-		if err := json.Unmarshal(m.Data, &msg); err != nil {
-			log.Printf("Failed to unmarshal message: %v", err)
-			return
-		}
-		handler(&msg)
-	})
-	if err != nil {
-		return err
-	}
-
-	chat.mu.Lock()
-	// Clean up old subscription if exists
-	if old, exists := chat.subs[ctxID]; exists {
-		old.Unsubscribe()
-	}
-	chat.subs[ctxID] = sub
-	chat.mu.Unlock()
-
-	return nil
-}
-
-// Unsubscribe removes a context's subscription
-func (chat *NATSChatroom) Unsubscribe(ctxID string) {
-	chat.mu.Lock()
-	defer chat.mu.Unlock()
-	if sub, exists := chat.subs[ctxID]; exists {
-		sub.Unsubscribe()
-		delete(chat.subs, ctxID)
-	}
-}
-
-// Publish sends a message to a room
-func (chat *NATSChatroom) Publish(room string, msg ChatMessage) error {
-	subject := "chat.room." + room
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return err
-	}
-	return chat.nc.Publish(subject, data)
-}
-
-// GetHistory retrieves recent messages from JetStream
-func (chat *NATSChatroom) GetHistory(room string, limit int) ([]ChatMessage, error) {
-	subject := "chat.room." + room
-
-	// Create an ephemeral consumer to replay messages
-	sub, err := chat.js.SubscribeSync(subject, nats.DeliverLast())
-	if err != nil {
-		// No messages yet
-		return nil, nil
-	}
-	defer sub.Unsubscribe()
-
-	var messages []ChatMessage
-	for i := 0; i < limit; i++ {
-		msg, err := sub.NextMsg(100 * time.Millisecond)
-		if err != nil {
-			break
-		}
-		var chatMsg ChatMessage
-		if err := json.Unmarshal(msg.Data, &chatMsg); err == nil {
-			messages = append(messages, chatMsg)
-		}
-	}
-	return messages, nil
-}
-
-func (chat *NATSChatroom) Close() {
-	chat.mu.Lock()
-	for _, sub := range chat.subs {
-		sub.Unsubscribe()
-	}
-	chat.mu.Unlock()
-	chat.nc.Close()
-}
-
 var roomNames = []string{"Go", "Rust", "Python", "JavaScript", "Clojure"}
 
 func main() {
 	ctx := context.Background()
 
-	// Start embedded NATS server (JetStream enabled by default)
-	ns, err := embeddednats.New(ctx,
-		embeddednats.WithDirectory("./data/nats"),
-	)
+	ps, err := vianats.New(ctx, "./data/nats")
 	if err != nil {
 		log.Fatalf("Failed to start embedded NATS: %v", err)
 	}
-	ns.WaitForServer()
+	defer ps.Close()
 
-	// Get client connection to embedded server
-	nc, err := ns.Client()
-	if err != nil {
-		log.Fatalf("Failed to connect to embedded NATS: %v", err)
-	}
-
-	chat, err := NewNATSChatroom(nc)
-	if err != nil {
-		log.Fatalf("Failed to initialize chatroom: %v", err)
-	}
-	defer chat.Close()
+	// Create JetStream stream for message durability
+	js := ps.JetStream()
+	js.AddStream(&nats.StreamConfig{
+		Name:      "CHAT",
+		Subjects:  []string{"chat.>"},
+		Retention: nats.LimitsPolicy,
+		MaxMsgs:   1000,
+		MaxAge:    24 * time.Hour,
+	})
 
 	v := via.New()
 	v.Config(via.Options{
@@ -183,6 +62,7 @@ func main() {
 		DocumentTitle: "NATS Chat",
 		LogLvl:        via.LogLevelInfo,
 		ServerAddress: ":7331",
+		PubSub:        ps,
 	})
 
 	v.AppendToHead(
@@ -256,26 +136,30 @@ func main() {
 		roomSignal := c.Signal("Go")
 		statement := c.Signal("")
 
-		// Local message cache for this context
 		var messages []ChatMessage
 		var messagesMu sync.Mutex
 		currentRoom := "Go"
 
-		// Context ID for subscription management
-		ctxID := randID()
+		var currentSub via.Subscription
 
-		// Subscribe to current room
 		subscribeToRoom := func(room string) {
-			chat.Subscribe(ctxID, room, func(msg *ChatMessage) {
+			if currentSub != nil {
+				currentSub.Unsubscribe()
+			}
+			sub, _ := c.Subscribe("chat.room."+room, func(data []byte) {
+				var msg ChatMessage
+				if err := json.Unmarshal(data, &msg); err != nil {
+					return
+				}
 				messagesMu.Lock()
-				messages = append(messages, *msg)
-				// Keep only last 50 messages
+				messages = append(messages, msg)
 				if len(messages) > 50 {
 					messages = messages[len(messages)-50:]
 				}
 				messagesMu.Unlock()
 				c.Sync()
 			})
+			currentSub = sub
 			currentRoom = room
 		}
 
@@ -285,7 +169,7 @@ func main() {
 			newRoom := roomSignal.String()
 			if newRoom != currentRoom {
 				messagesMu.Lock()
-				messages = nil // Clear messages for new room
+				messages = nil
 				messagesMu.Unlock()
 				subscribeToRoom(newRoom)
 				c.Sync()
@@ -299,15 +183,15 @@ func main() {
 			}
 			statement.SetValue("")
 
-			chat.Publish(currentRoom, ChatMessage{
+			data, _ := json.Marshal(ChatMessage{
 				User:    currentUser,
 				Message: msg,
 				Time:    time.Now().UnixMilli(),
 			})
+			c.Publish("chat.room."+currentRoom, data)
 		})
 
 		c.View(func() h.H {
-			// Build room tabs
 			var tabs []h.H
 			for _, name := range roomNames {
 				isCurrent := name == currentRoom
@@ -320,7 +204,6 @@ func main() {
 				))
 			}
 
-			// Build message list
 			messagesMu.Lock()
 			chatHistoryChildren := []h.H{
 				h.Class("chat-history"),
@@ -378,15 +261,6 @@ func randUser() UserInfo {
 		Name:  adjectives[rand.Intn(len(adjectives))] + " " + animals[idx],
 		Emoji: emojis[idx],
 	}
-}
-
-func randID() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	b := make([]byte, 8)
-	for i := range b {
-		b[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(b)
 }
 
 var quoteIdx = rand.Intn(len(devQuotes))

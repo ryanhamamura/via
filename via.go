@@ -40,6 +40,7 @@ type V struct {
 	documentFootIncludes      []h.H
 	devModePageInitFnMap      map[string]func(*Context)
 	sessionManager  *scs.SessionManager
+	pubsub          PubSub
 	datastarPath    string
 	datastarContent []byte
 	datastarOnce    sync.Once
@@ -116,6 +117,9 @@ func (v *V) Config(cfg Options) {
 	}
 	if cfg.DatastarPath != "" {
 		v.datastarPath = cfg.DatastarPath
+	}
+	if cfg.PubSub != nil {
+		v.pubsub = cfg.PubSub
 	}
 }
 
@@ -525,6 +529,7 @@ func New() *V {
 			v.logErr(c, "failed to handle session close: %v", err)
 			return
 		}
+		c.unsubscribeAll()
 		c.stopAllRoutines()
 		v.logDebug(c, "session close event triggered")
 		if v.cfg.DevMode {

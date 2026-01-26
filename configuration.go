@@ -45,4 +45,8 @@ type Options struct {
 	// DatastarPath is the URL path where the script is served.
 	// Defaults to "/_datastar.js" if empty.
 	DatastarPath string
+
+	// PubSub enables publish/subscribe messaging. Use vianats.New() for an
+	// embedded NATS backend, or supply any PubSub implementation.
+	PubSub PubSub
 }
