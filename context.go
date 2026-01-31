@@ -32,6 +32,7 @@ type Context struct {
 	reqCtx            context.Context
 	subscriptions     []Subscription
 	subsMu            sync.Mutex
+	disposeOnce       sync.Once
 }
 
 // View defines the UI rendered by this context.
@@ -350,11 +351,23 @@ func (c *Context) ReplaceURLf(format string, a ...any) {
 	c.ReplaceURL(fmt.Sprintf(format, a...))
 }
 
-// stopAllRoutines stops all go routines tied to this Context preventing goroutine leaks.
+// dispose idempotently tears down this context: unsubscribes all pubsub
+// subscriptions and closes ctxDisposedChan to stop routines and exit the SSE loop.
+func (c *Context) dispose() {
+	c.disposeOnce.Do(func() {
+		c.unsubscribeAll()
+		c.stopAllRoutines()
+	})
+}
+
+// stopAllRoutines closes ctxDisposedChan, broadcasting to all listening
+// goroutines (OnIntervalRoutine, SSE loop) that this context is done.
 func (c *Context) stopAllRoutines() {
 	select {
-	case c.ctxDisposedChan <- struct{}{}:
+	case <-c.ctxDisposedChan:
+		// already closed
 	default:
+		close(c.ctxDisposedChan)
 	}
 }
 
