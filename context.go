@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"maps"
 	"reflect"
 	"sync"
@@ -456,7 +455,7 @@ func (c *Context) unsubscribeAll() {
 
 func newContext(id string, route string, v *V) *Context {
 	if v == nil {
-		log.Fatal("create context failed: app pointer is nil")
+		panic("create context failed: app pointer is nil")
 	}
 
 	return &Context{

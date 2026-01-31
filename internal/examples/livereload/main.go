@@ -14,7 +14,7 @@ func main() {
 	v.Config(via.Options{
 		DocumentTitle: "Live Reload Demo",
 		DevMode:       true,
-		LogLvl:        via.LogLevelDebug,
+		LogLevel:      via.LogLevelDebug,
 		Plugins:       []via.Plugin{
 			// picocss.Default
 		},

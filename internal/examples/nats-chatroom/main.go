@@ -60,7 +60,7 @@ func main() {
 	v.Config(via.Options{
 		DevMode:       true,
 		DocumentTitle: "NATS Chat",
-		LogLvl:        via.LogLevelInfo,
+		LogLevel:      via.LogLevelInfo,
 		ServerAddress: ":7331",
 		PubSub:        ps,
 	})

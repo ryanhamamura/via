@@ -54,7 +54,7 @@ func main() {
 	v.Config(via.Options{
 		DevMode:       true,
 		DocumentTitle: "Search",
-		LogLvl:        via.LogLevelWarn,
+		LogLevel:      via.LogLevelWarn,
 	})
 
 	v.AppendToHead(

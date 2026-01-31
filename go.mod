@@ -11,6 +11,7 @@ require (
 	github.com/delaneyj/toolbelt v0.9.1
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/nats-io/nats.go v1.48.0
+	github.com/rs/zerolog v1.34.0
 	github.com/starfederation/datastar-go v1.0.3
 	github.com/stretchr/testify v1.11.1
 )
@@ -24,6 +25,8 @@ require (
 	github.com/google/go-tpm v0.9.7 // indirect
 	github.com/klauspost/compress v1.18.2 // indirect
 	github.com/kr/text v0.2.0 // indirect
+	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/minio/highwayhash v1.0.4-0.20251030100505-070ab1a87a76 // indirect
 	github.com/nats-io/jwt/v2 v2.8.0 // indirect
 	github.com/nats-io/nats-server/v2 v2.12.2 // indirect

@@ -22,7 +22,7 @@ func main() {
 	v.Config(via.Options{
 		DevMode:       true,
 		DocumentTitle: "ViaChat",
-		LogLvl:        via.LogLevelInfo,
+		LogLevel:      via.LogLevelInfo,
 	})
 
 	v.AppendToHead(

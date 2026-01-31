@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/alexedwards/scs/v2"
+	"github.com/rs/zerolog"
 	"github.com/ryanhamamura/via/h"
 	"github.com/starfederation/datastar-go/datastar"
 )
@@ -34,6 +34,7 @@ var datastarJS []byte
 type V struct {
 	cfg                       Options
 	mux                       *http.ServeMux
+	logger                    zerolog.Logger
 	contextRegistry           map[string]*Context
 	contextRegistryMutex      sync.RWMutex
 	documentHeadIncludes      []h.H
@@ -46,52 +47,52 @@ type V struct {
 	datastarOnce    sync.Once
 }
 
+func (v *V) logEvent(evt *zerolog.Event, c *Context) *zerolog.Event {
+	if c != nil && c.id != "" {
+		evt = evt.Str("via-ctx", c.id)
+	}
+	return evt
+}
+
 func (v *V) logFatal(format string, a ...any) {
-	log.Printf("[fatal] msg=%q", fmt.Sprintf(format, a...))
+	v.logEvent(v.logger.WithLevel(zerolog.FatalLevel), nil).Msgf(format, a...)
 }
 
 func (v *V) logErr(c *Context, format string, a ...any) {
-	cRef := ""
-	if c != nil && c.id != "" {
-		cRef = fmt.Sprintf("via-ctx=%q ", c.id)
-	}
-	log.Printf("[error] %smsg=%q", cRef, fmt.Sprintf(format, a...))
+	v.logEvent(v.logger.Error(), c).Msgf(format, a...)
 }
 
 func (v *V) logWarn(c *Context, format string, a ...any) {
-	cRef := ""
-	if c != nil && c.id != "" {
-		cRef = fmt.Sprintf("via-ctx=%q ", c.id)
-	}
-	if v.cfg.LogLvl >= LogLevelWarn {
-		log.Printf("[warn] %smsg=%q", cRef, fmt.Sprintf(format, a...))
-	}
+	v.logEvent(v.logger.Warn(), c).Msgf(format, a...)
 }
 
 func (v *V) logInfo(c *Context, format string, a ...any) {
-	cRef := ""
-	if c != nil && c.id != "" {
-		cRef = fmt.Sprintf("via-ctx=%q ", c.id)
-	}
-	if v.cfg.LogLvl >= LogLevelInfo {
-		log.Printf("[info] %smsg=%q", cRef, fmt.Sprintf(format, a...))
-	}
+	v.logEvent(v.logger.Info(), c).Msgf(format, a...)
 }
 
 func (v *V) logDebug(c *Context, format string, a ...any) {
-	cRef := ""
-	if c != nil && c.id != "" {
-		cRef = fmt.Sprintf("via-ctx=%q ", c.id)
-	}
-	if v.cfg.LogLvl == LogLevelDebug {
-		log.Printf("[debug] %smsg=%q", cRef, fmt.Sprintf(format, a...))
-	}
+	v.logEvent(v.logger.Debug(), c).Msgf(format, a...)
+}
+
+func newConsoleLogger(level zerolog.Level) zerolog.Logger {
+	return zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: "15:04:05"}).
+		With().Timestamp().Logger().Level(level)
 }
 
 // Config overrides the default configuration with the given options.
 func (v *V) Config(cfg Options) {
-	if cfg.LogLvl != undefined {
-		v.cfg.LogLvl = cfg.LogLvl
+	if cfg.Logger != nil {
+		v.logger = *cfg.Logger
+	} else if cfg.LogLevel != nil || cfg.DevMode != v.cfg.DevMode {
+		level := zerolog.InfoLevel
+		if cfg.LogLevel != nil {
+			level = *cfg.LogLevel
+		}
+		if cfg.DevMode {
+			v.logger = newConsoleLogger(level)
+		} else {
+			v.logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Level(level)
+		}
 	}
 	if cfg.DocumentTitle != "" {
 		v.cfg.DocumentTitle = cfg.DocumentTitle
@@ -260,7 +261,7 @@ func (v *V) Start() {
 	if v.sessionManager != nil {
 		handler = v.sessionManager.LoadAndSave(v.mux)
 	}
-	log.Fatalf("[fatal] %v", http.ListenAndServe(v.cfg.ServerAddress, handler))
+	v.logger.Fatal().Err(http.ListenAndServe(v.cfg.ServerAddress, handler)).Msg("http server failed")
 }
 
 // HTTPServeMux returns the underlying HTTP request multiplexer to enable user extentions, middleware and
@@ -284,7 +285,7 @@ func (v *V) ensureDatastarHandler() {
 func (v *V) devModePersist(c *Context) {
 	p := filepath.Join(".via", "devmode", "ctx.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
-		log.Fatalf("failed to create directory for devmode files: %v", err)
+		v.logFatal("failed to create directory for devmode files: %v", err)
 	}
 
 	// load persisted list from file, or empty list if file not found
@@ -398,6 +399,7 @@ func New() *V {
 
 	v := &V{
 		mux:                  mux,
+		logger:               newConsoleLogger(zerolog.InfoLevel),
 		contextRegistry:      make(map[string]*Context),
 		devModePageInitFnMap: make(map[string]func(*Context)),
 		sessionManager:       scs.New(),
@@ -406,7 +408,6 @@ func New() *V {
 		cfg: Options{
 			DevMode:       false,
 			ServerAddress: ":3000",
-			LogLvl:        LogLevelInfo,
 			DocumentTitle: "⚡ Via",
 		},
 	}
@@ -518,7 +519,7 @@ func New() *V {
 	v.mux.HandleFunc("POST /_session/close", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("Error reading body: %v", err)
+			v.logErr(nil, "error reading body: %v", err)
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}

@@ -1,15 +1,17 @@
 package via
 
-import "github.com/alexedwards/scs/v2"
+import (
+	"github.com/alexedwards/scs/v2"
+	"github.com/rs/zerolog"
+)
 
-type LogLevel int
+func ptr(l zerolog.Level) *zerolog.Level { return &l }
 
-const (
-	undefined LogLevel = iota
-	LogLevelError
-	LogLevelWarn
-	LogLevelInfo
-	LogLevelDebug
+var (
+	LogLevelDebug = ptr(zerolog.DebugLevel)
+	LogLevelInfo  = ptr(zerolog.InfoLevel)
+	LogLevelWarn  = ptr(zerolog.WarnLevel)
+	LogLevelError = ptr(zerolog.ErrorLevel)
 )
 
 // Plugin is a func that can mutate the given *via.V app runtime. It is useful to integrate popular JS/CSS UI libraries or tools.
@@ -23,9 +25,12 @@ type Options struct {
 	// The http server address. e.g. ':3000'
 	ServerAddress string
 
-	// Level of the logs to write to stdout.
-	// Options: Error, Warn, Info, Debug.
-	LogLvl LogLevel
+	// LogLevel sets the minimum log level. nil keeps the default (Info).
+	LogLevel *zerolog.Level
+
+	// Logger overrides the default logger entirely. When set, LogLevel and
+	// DevMode have no effect on logging.
+	Logger *zerolog.Logger
 
 	// The title of the HTML document.
 	DocumentTitle string
