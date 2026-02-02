@@ -3,6 +3,7 @@ package via
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/ryanhamamura/via/h"
 )
@@ -21,7 +22,15 @@ type triggerOpts struct {
 	hasSignal bool
 	signalID  string
 	value     string
+	window    bool
 }
+
+type withWindowOpt struct{}
+
+func (o withWindowOpt) apply(opts *triggerOpts) { opts.window = true }
+
+// WithWindow scopes the event listener to the window instead of the element.
+func WithWindow() ActionTriggerOption { return withWindowOpt{} }
 
 type withSignalOpt struct {
 	signalID string
@@ -92,5 +101,34 @@ func (a *actionTrigger) OnKeyDown(key string, options ...ActionTriggerOption) h.
 	if key != "" {
 		condition = fmt.Sprintf("evt.key==='%s' &&", key)
 	}
-	return h.Data("on:keydown", fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
+	attrName := "on:keydown"
+	if opts.window {
+		attrName = "on:keydown__window"
+	}
+	return h.Data(attrName, fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
+}
+
+// KeyBinding pairs a key name with action trigger options for use with OnKeyDownMap.
+type KeyBinding struct {
+	Key     string
+	Options []ActionTriggerOption
+}
+
+// KeyBind creates a KeyBinding for use with OnKeyDownMap.
+func KeyBind(key string, options ...ActionTriggerOption) KeyBinding {
+	return KeyBinding{Key: key, Options: options}
+}
+
+// OnKeyDownMap combines multiple key bindings into a single data-on:keydown__window
+// attribute using a JS ternary chain. This avoids HTML attribute deduplication issues
+// that occur when multiple OnKeyDown calls target the same element.
+func (a *actionTrigger) OnKeyDownMap(bindings ...KeyBinding) h.H {
+	var parts []string
+	for _, b := range bindings {
+		opts := applyOptions(b.Options...)
+		expr := buildOnExpr(actionURL(a.id), &opts)
+		parts = append(parts, fmt.Sprintf("evt.key==='%s' ? (%s)", b.Key, expr))
+	}
+	combined := strings.Join(parts, " : ") + " : void 0"
+	return h.Data("on:keydown__window", combined)
 }
