@@ -128,6 +128,101 @@ func TestAction(t *testing.T) {
 	assert.Contains(t, body, "/_action/")
 }
 
+func TestOnKeyDownWithWindow(t *testing.T) {
+	var trigger *actionTrigger
+	v := New()
+	v.Page("/", func(c *Context) {
+		trigger = c.Action(func() {})
+		c.View(func() h.H {
+			return h.Div(trigger.OnKeyDown("Enter", WithWindow()))
+		})
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	assert.Contains(t, body, "data-on:keydown__window")
+	assert.Contains(t, body, "evt.key===&#39;Enter&#39;")
+}
+
+func TestOnKeyDownMap(t *testing.T) {
+	t.Run("multiple bindings with different actions", func(t *testing.T) {
+		var move, shoot *actionTrigger
+		var dir *signal
+		v := New()
+		v.Page("/", func(c *Context) {
+			dir = c.Signal("none")
+			move = c.Action(func() {})
+			shoot = c.Action(func() {})
+			c.View(func() h.H {
+				return h.Div(
+					OnKeyDownMap(
+						KeyBind("w", move, WithSignal(dir, "up")),
+						KeyBind("ArrowUp", move, WithSignal(dir, "up"), WithPreventDefault()),
+						KeyBind(" ", shoot, WithPreventDefault()),
+					),
+				)
+			})
+		})
+
+		req := httptest.NewRequest("GET", "/", nil)
+		w := httptest.NewRecorder()
+		v.mux.ServeHTTP(w, req)
+		body := w.Body.String()
+
+		// Single attribute, window-scoped
+		assert.Contains(t, body, "data-on:keydown__window")
+
+		// Key dispatching
+		assert.Contains(t, body, "evt.key===&#39;w&#39;")
+		assert.Contains(t, body, "evt.key===&#39;ArrowUp&#39;")
+		assert.Contains(t, body, "evt.key===&#39; &#39;")
+
+		// Different actions referenced
+		assert.Contains(t, body, "/_action/"+move.id)
+		assert.Contains(t, body, "/_action/"+shoot.id)
+
+		// preventDefault only on ArrowUp and space branches
+		assert.Contains(t, body, "evt.key===&#39;ArrowUp&#39; ? (evt.preventDefault()")
+		assert.Contains(t, body, "evt.key===&#39; &#39; ? (evt.preventDefault()")
+
+		// 'w' branch should NOT have preventDefault
+		assert.NotContains(t, body, "evt.key===&#39;w&#39; ? (evt.preventDefault()")
+	})
+
+	t.Run("WithSignal per binding", func(t *testing.T) {
+		var move *actionTrigger
+		var dir *signal
+		v := New()
+		v.Page("/", func(c *Context) {
+			dir = c.Signal("none")
+			move = c.Action(func() {})
+			c.View(func() h.H {
+				return h.Div(
+					OnKeyDownMap(
+						KeyBind("w", move, WithSignal(dir, "up")),
+						KeyBind("s", move, WithSignal(dir, "down")),
+					),
+				)
+			})
+		})
+
+		req := httptest.NewRequest("GET", "/", nil)
+		w := httptest.NewRecorder()
+		v.mux.ServeHTTP(w, req)
+		body := w.Body.String()
+
+		assert.Contains(t, body, "$"+dir.ID()+"=&#39;up&#39;")
+		assert.Contains(t, body, "$"+dir.ID()+"=&#39;down&#39;")
+	})
+
+	t.Run("empty bindings returns nil", func(t *testing.T) {
+		result := OnKeyDownMap()
+		assert.Nil(t, result)
+	})
+}
+
 func TestConfig(t *testing.T) {
 	v := New()
 	v.Config(Options{DocumentTitle: "Test"})

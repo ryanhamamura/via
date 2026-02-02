@@ -18,9 +18,11 @@ type ActionTriggerOption interface {
 }
 
 type triggerOpts struct {
-	hasSignal bool
-	signalID  string
-	value     string
+	hasSignal      bool
+	signalID       string
+	value          string
+	window         bool
+	preventDefault bool
 }
 
 type withSignalOpt struct {
@@ -32,6 +34,28 @@ func (o withSignalOpt) apply(opts *triggerOpts) {
 	opts.hasSignal = true
 	opts.signalID = o.signalID
 	opts.value = o.value
+}
+
+type withWindowOpt struct{}
+
+func (o withWindowOpt) apply(opts *triggerOpts) {
+	opts.window = true
+}
+
+// WithWindow makes the event listener attach to the window instead of the element.
+func WithWindow() ActionTriggerOption {
+	return withWindowOpt{}
+}
+
+type withPreventDefaultOpt struct{}
+
+func (o withPreventDefaultOpt) apply(opts *triggerOpts) {
+	opts.preventDefault = true
+}
+
+// WithPreventDefault calls evt.preventDefault() for matched keys.
+func WithPreventDefault() ActionTriggerOption {
+	return withPreventDefaultOpt{}
 }
 
 // WithSignal sets a signal value before triggering the action.
@@ -54,7 +78,7 @@ func buildOnExpr(base string, opts *triggerOpts) string {
 	if !opts.hasSignal {
 		return base
 	}
-	return fmt.Sprintf("$%s=%s;%s", opts.signalID, opts.value, base)
+	return fmt.Sprintf("$%s=%s,%s", opts.signalID, opts.value, base)
 }
 
 func applyOptions(options ...ActionTriggerOption) triggerOpts {
@@ -92,5 +116,49 @@ func (a *actionTrigger) OnKeyDown(key string, options ...ActionTriggerOption) h.
 	if key != "" {
 		condition = fmt.Sprintf("evt.key==='%s' &&", key)
 	}
-	return h.Data("on:keydown", fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
+	attrName := "on:keydown"
+	if opts.window {
+		attrName = "on:keydown__window"
+	}
+	return h.Data(attrName, fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
+}
+
+// KeyBinding pairs a key with an action and per-binding options.
+type KeyBinding struct {
+	Key     string
+	Action  *actionTrigger
+	Options []ActionTriggerOption
+}
+
+// KeyBind creates a KeyBinding for use with OnKeyDownMap.
+func KeyBind(key string, action *actionTrigger, options ...ActionTriggerOption) KeyBinding {
+	return KeyBinding{Key: key, Action: action, Options: options}
+}
+
+// OnKeyDownMap produces a single window-scoped keydown attribute that dispatches
+// to different actions based on the pressed key. Each binding can reference a
+// different action and carry its own signal/preventDefault options.
+func OnKeyDownMap(bindings ...KeyBinding) h.H {
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	expr := ""
+	for i, b := range bindings {
+		opts := applyOptions(b.Options...)
+
+		branch := ""
+		if opts.preventDefault {
+			branch = "evt.preventDefault(),"
+		}
+		branch += buildOnExpr(actionURL(b.Action.id), &opts)
+
+		if i > 0 {
+			expr += " : "
+		}
+		expr += fmt.Sprintf("evt.key==='%s' ? (%s)", b.Key, branch)
+	}
+	expr += " : void 0"
+
+	return h.Data("on:keydown__window", expr)
 }
