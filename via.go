@@ -9,12 +9,13 @@ package via
 import (
 	"context"
 	"crypto/rand"
-	_ "embed"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -410,6 +411,46 @@ func (v *V) drainAllContexts() {
 // Concurrent handler registration is not safe.
 func (v *V) HTTPServeMux() *http.ServeMux {
 	return v.mux
+}
+
+// Static serves files from a filesystem directory at the given URL prefix.
+//
+// Example:
+//
+//	v.Static("/assets/", "./public")
+func (v *V) Static(urlPrefix, dir string) {
+	if !strings.HasSuffix(urlPrefix, "/") {
+		urlPrefix += "/"
+	}
+	fileServer := http.StripPrefix(urlPrefix, http.FileServer(http.Dir(dir)))
+	v.mux.Handle("GET "+urlPrefix, noDirListing(fileServer))
+}
+
+// StaticFS serves files from an [fs.FS] at the given URL prefix.
+// This is useful with //go:embed filesystems.
+//
+// Example:
+//
+//	//go:embed static
+//	var staticFiles embed.FS
+//	v.StaticFS("/assets/", staticFiles)
+func (v *V) StaticFS(urlPrefix string, fsys fs.FS) {
+	if !strings.HasSuffix(urlPrefix, "/") {
+		urlPrefix += "/"
+	}
+	fileServer := http.StripPrefix(urlPrefix, http.FileServerFS(fsys))
+	v.mux.Handle("GET "+urlPrefix, noDirListing(fileServer))
+}
+
+// noDirListing wraps a file server handler to return 404 for directory requests.
+func noDirListing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (v *V) ensureDatastarHandler() {
