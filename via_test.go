@@ -1,9 +1,13 @@
 package via
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ryanhamamura/via/h"
 	"github.com/stretchr/testify/assert"
@@ -234,4 +238,94 @@ func TestPage_PanicsOnNoView(t *testing.T) {
 		v := New()
 		v.Page("/", func(c *Context) {})
 	})
+}
+
+func TestReaperCleansOrphanedContexts(t *testing.T) {
+	v := New()
+	c := newContext("orphan-1", "/", v)
+	c.createdAt = time.Now().Add(-time.Minute) // created 1 min ago
+	v.registerCtx(c)
+
+	_, err := v.getCtx("orphan-1")
+	assert.NoError(t, err)
+
+	v.reapOrphanedContexts(10 * time.Second)
+
+	_, err = v.getCtx("orphan-1")
+	assert.Error(t, err, "orphaned context should have been reaped")
+}
+
+func TestReaperIgnoresConnectedContexts(t *testing.T) {
+	v := New()
+	c := newContext("connected-1", "/", v)
+	c.createdAt = time.Now().Add(-time.Minute)
+	c.sseConnected.Store(true)
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(10 * time.Second)
+
+	_, err := v.getCtx("connected-1")
+	assert.NoError(t, err, "connected context should survive reaping")
+}
+
+func TestReaperDisabledWithNegativeTTL(t *testing.T) {
+	v := New()
+	v.cfg.ContextTTL = -1
+	v.startReaper()
+	assert.Nil(t, v.reaperStop, "reaper should not start with negative TTL")
+}
+
+func TestCleanupCtxIdempotent(t *testing.T) {
+	v := New()
+	c := newContext("idempotent-1", "/", v)
+	v.registerCtx(c)
+
+	assert.NotPanics(t, func() {
+		v.cleanupCtx(c)
+		v.cleanupCtx(c)
+	})
+
+	_, err := v.getCtx("idempotent-1")
+	assert.Error(t, err, "context should be removed after cleanup")
+}
+
+func TestDevModeRemovePersistedFix(t *testing.T) {
+	v := New()
+	v.cfg.DevMode = true
+
+	dir := filepath.Join(t.TempDir(), ".via", "devmode")
+	p := filepath.Join(dir, "ctx.json")
+	assert.NoError(t, os.MkdirAll(dir, 0755))
+
+	// Write a persisted context
+	ctxRegMap := map[string]string{"test-ctx-1": "/"}
+	f, err := os.Create(p)
+	assert.NoError(t, err)
+	assert.NoError(t, json.NewEncoder(f).Encode(ctxRegMap))
+	f.Close()
+
+	// Patch devModeRemovePersisted to use our temp path by calling it
+	// directly — we need to override the path. Instead, test via the
+	// actual function by temporarily changing the working dir.
+	origDir, _ := os.Getwd()
+	assert.NoError(t, os.Chdir(t.TempDir()))
+	defer os.Chdir(origDir)
+
+	// Re-create the structure in the temp dir
+	assert.NoError(t, os.MkdirAll(filepath.Join(".via", "devmode"), 0755))
+	p2 := filepath.Join(".via", "devmode", "ctx.json")
+	f2, _ := os.Create(p2)
+	json.NewEncoder(f2).Encode(map[string]string{"test-ctx-1": "/"})
+	f2.Close()
+
+	c := newContext("test-ctx-1", "/", v)
+	v.devModeRemovePersisted(c)
+
+	// Read back and verify
+	f3, err := os.Open(p2)
+	assert.NoError(t, err)
+	defer f3.Close()
+	var result map[string]string
+	assert.NoError(t, json.NewDecoder(f3).Decode(&result))
+	assert.Empty(t, result, "persisted context should be removed")
 }

@@ -8,6 +8,7 @@ import (
 	"maps"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ryanhamamura/via/h"
@@ -33,6 +34,8 @@ type Context struct {
 	subscriptions     []Subscription
 	subsMu            sync.Mutex
 	disposeOnce       sync.Once
+	createdAt         time.Time
+	sseConnected      atomic.Bool
 }
 
 // View defines the UI rendered by this context.
@@ -481,5 +484,6 @@ func newContext(id string, route string, v *V) *Context {
 		signals:           new(sync.Map),
 		patchChan:         make(chan patch, 1),
 		ctxDisposedChan:   make(chan struct{}, 1),
+		createdAt:         time.Now(),
 	}
 }

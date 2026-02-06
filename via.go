@@ -36,20 +36,21 @@ var datastarJS []byte
 // V is the root application.
 // It manages page routing, user sessions, and SSE connections for live updates.
 type V struct {
-	cfg                       Options
-	mux                       *http.ServeMux
-	server                    *http.Server
-	logger                    zerolog.Logger
-	contextRegistry           map[string]*Context
-	contextRegistryMutex      sync.RWMutex
-	documentHeadIncludes      []h.H
-	documentFootIncludes      []h.H
-	devModePageInitFnMap      map[string]func(*Context)
-	sessionManager  *scs.SessionManager
-	pubsub          PubSub
-	datastarPath    string
-	datastarContent []byte
-	datastarOnce    sync.Once
+	cfg                  Options
+	mux                  *http.ServeMux
+	server               *http.Server
+	logger               zerolog.Logger
+	contextRegistry      map[string]*Context
+	contextRegistryMutex sync.RWMutex
+	documentHeadIncludes []h.H
+	documentFootIncludes []h.H
+	devModePageInitFnMap map[string]func(*Context)
+	sessionManager       *scs.SessionManager
+	pubsub               PubSub
+	datastarPath         string
+	datastarContent      []byte
+	datastarOnce         sync.Once
+	reaperStop           chan struct{}
 }
 
 func (v *V) logEvent(evt *zerolog.Event, c *Context) *zerolog.Event {
@@ -126,6 +127,9 @@ func (v *V) Config(cfg Options) {
 	}
 	if cfg.PubSub != nil {
 		v.pubsub = cfg.PubSub
+	}
+	if cfg.ContextTTL != 0 {
+		v.cfg.ContextTTL = cfg.ContextTTL
 	}
 }
 
@@ -238,6 +242,14 @@ func (v *V) currSessionNum() int {
 	return len(v.contextRegistry)
 }
 
+func (v *V) cleanupCtx(c *Context) {
+	c.dispose()
+	if v.cfg.DevMode {
+		v.devModeRemovePersisted(c)
+	}
+	v.unregisterCtx(c)
+}
+
 func (v *V) unregisterCtx(c *Context) {
 	if c.id == "" {
 		v.logErr(c, "unregister ctx failed: ctx contains empty id")
@@ -259,6 +271,50 @@ func (v *V) getCtx(id string) (*Context, error) {
 	return nil, fmt.Errorf("ctx '%s' not found", id)
 }
 
+func (v *V) startReaper() {
+	ttl := v.cfg.ContextTTL
+	if ttl < 0 {
+		return
+	}
+	if ttl == 0 {
+		ttl = 30 * time.Second
+	}
+	interval := ttl / 3
+	if interval < 5*time.Second {
+		interval = 5 * time.Second
+	}
+	v.reaperStop = make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-v.reaperStop:
+				return
+			case <-ticker.C:
+				v.reapOrphanedContexts(ttl)
+			}
+		}
+	}()
+}
+
+func (v *V) reapOrphanedContexts(ttl time.Duration) {
+	now := time.Now()
+	v.contextRegistryMutex.RLock()
+	var orphans []*Context
+	for _, c := range v.contextRegistry {
+		if !c.sseConnected.Load() && now.Sub(c.createdAt) > ttl {
+			orphans = append(orphans, c)
+		}
+	}
+	v.contextRegistryMutex.RUnlock()
+
+	for _, c := range orphans {
+		v.logInfo(c, "reaping orphaned context (no SSE connection after %s)", ttl)
+		v.cleanupCtx(c)
+	}
+}
+
 // Start starts the Via HTTP server and blocks until a SIGINT or SIGTERM
 // signal is received, then performs a graceful shutdown.
 func (v *V) Start() {
@@ -270,6 +326,8 @@ func (v *V) Start() {
 		Addr:    v.cfg.ServerAddress,
 		Handler: handler,
 	}
+
+	v.startReaper()
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -301,6 +359,9 @@ func (v *V) Shutdown() {
 }
 
 func (v *V) shutdown() {
+	if v.reaperStop != nil {
+		close(v.reaperStop)
+	}
 	v.logInfo(nil, "draining all contexts")
 	v.drainAllContexts()
 
@@ -400,10 +461,7 @@ func (v *V) devModeRemovePersisted(c *Context) {
 	}
 	file.Close()
 
-	// remove ctx to persisted list
-	if _, ok := ctxRegMap[c.id]; !ok {
-		delete(ctxRegMap, c.id)
-	}
+	delete(ctxRegMap, c.id)
 
 	// write persisted list to file
 	file, err = os.Create(p)
@@ -507,6 +565,7 @@ func New() *V {
 		// use last-event-id to tell if request is a sse reconnect
 		sse.Send(datastar.EventTypePatchElements, []string{}, datastar.WithSSEEventId("via"))
 
+		c.sseConnected.Store(true)
 		v.logDebug(c, "SSE connection established")
 
 		go func() {
@@ -517,6 +576,7 @@ func New() *V {
 			select {
 			case <-sse.Context().Done():
 				v.logDebug(c, "SSE connection ended")
+				v.cleanupCtx(c)
 				return
 			case <-c.ctxDisposedChan:
 				v.logDebug(c, "context disposed, closing SSE")
@@ -603,12 +663,8 @@ func New() *V {
 			v.logErr(c, "failed to handle session close: %v", err)
 			return
 		}
-		c.dispose()
 		v.logDebug(c, "session close event triggered")
-		if v.cfg.DevMode {
-			v.devModeRemovePersisted(c)
-		}
-		v.unregisterCtx(c)
+		v.cleanupCtx(c)
 	})
 	return v
 }

@@ -1,6 +1,8 @@
 package via
 
 import (
+	"time"
+
 	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog"
 )
@@ -54,4 +56,9 @@ type Options struct {
 	// PubSub enables publish/subscribe messaging. Use vianats.New() for an
 	// embedded NATS backend, or supply any PubSub implementation.
 	PubSub PubSub
+
+	// ContextTTL is the maximum time a context may exist without an SSE
+	// connection before the background reaper disposes it.
+	// Default: 30s. Negative value disables the reaper.
+	ContextTTL time.Duration
 }
