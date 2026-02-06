@@ -107,6 +107,54 @@ func (a *actionTrigger) OnChange(options ...ActionTriggerOption) h.H {
 	return h.Data("on:change__debounce.200ms", buildOnExpr(actionURL(a.id), &opts))
 }
 
+// OnSubmit returns a via.h DOM attribute that triggers on form submit.
+func (a *actionTrigger) OnSubmit(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:submit", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnInput returns a via.h DOM attribute that triggers on input (without debounce).
+func (a *actionTrigger) OnInput(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:input", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnFocus returns a via.h DOM attribute that triggers when the element gains focus.
+func (a *actionTrigger) OnFocus(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:focus", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnBlur returns a via.h DOM attribute that triggers when the element loses focus.
+func (a *actionTrigger) OnBlur(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:blur", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnMouseEnter returns a via.h DOM attribute that triggers when the mouse enters the element.
+func (a *actionTrigger) OnMouseEnter(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:mouseenter", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnMouseLeave returns a via.h DOM attribute that triggers when the mouse leaves the element.
+func (a *actionTrigger) OnMouseLeave(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:mouseleave", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnScroll returns a via.h DOM attribute that triggers on scroll.
+func (a *actionTrigger) OnScroll(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:scroll", buildOnExpr(actionURL(a.id), &opts))
+}
+
+// OnDblClick returns a via.h DOM attribute that triggers on double click.
+func (a *actionTrigger) OnDblClick(options ...ActionTriggerOption) h.H {
+	opts := applyOptions(options...)
+	return h.Data("on:dblclick", buildOnExpr(actionURL(a.id), &opts))
+}
+
 // OnKeyDown returns a via.h DOM attribute that triggers when a key is pressed.
 // key: optional, see https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/key
 // Example: OnKeyDown("Enter")

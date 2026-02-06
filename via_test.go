@@ -132,6 +132,60 @@ func TestAction(t *testing.T) {
 	assert.Contains(t, body, "/_action/")
 }
 
+func TestEventTypes(t *testing.T) {
+	tests := []struct {
+		name     string
+		attr     string
+		buildEl  func(trigger *actionTrigger) h.H
+	}{
+		{"OnSubmit", "data-on:submit", func(tr *actionTrigger) h.H { return h.Form(tr.OnSubmit()) }},
+		{"OnInput", "data-on:input", func(tr *actionTrigger) h.H { return h.Input(tr.OnInput()) }},
+		{"OnFocus", "data-on:focus", func(tr *actionTrigger) h.H { return h.Input(tr.OnFocus()) }},
+		{"OnBlur", "data-on:blur", func(tr *actionTrigger) h.H { return h.Input(tr.OnBlur()) }},
+		{"OnMouseEnter", "data-on:mouseenter", func(tr *actionTrigger) h.H { return h.Div(tr.OnMouseEnter()) }},
+		{"OnMouseLeave", "data-on:mouseleave", func(tr *actionTrigger) h.H { return h.Div(tr.OnMouseLeave()) }},
+		{"OnScroll", "data-on:scroll", func(tr *actionTrigger) h.H { return h.Div(tr.OnScroll()) }},
+		{"OnDblClick", "data-on:dblclick", func(tr *actionTrigger) h.H { return h.Div(tr.OnDblClick()) }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var trigger *actionTrigger
+			v := New()
+			v.Page("/", func(c *Context) {
+				trigger = c.Action(func() {})
+				c.View(func() h.H { return tt.buildEl(trigger) })
+			})
+
+			req := httptest.NewRequest("GET", "/", nil)
+			w := httptest.NewRecorder()
+			v.mux.ServeHTTP(w, req)
+			body := w.Body.String()
+			assert.Contains(t, body, tt.attr)
+			assert.Contains(t, body, "/_action/"+trigger.id)
+		})
+	}
+
+	t.Run("WithSignal", func(t *testing.T) {
+		var trigger *actionTrigger
+		var sig *signal
+		v := New()
+		v.Page("/", func(c *Context) {
+			trigger = c.Action(func() {})
+			sig = c.Signal("val")
+			c.View(func() h.H {
+				return h.Div(trigger.OnDblClick(WithSignal(sig, "x")))
+			})
+		})
+
+		req := httptest.NewRequest("GET", "/", nil)
+		w := httptest.NewRecorder()
+		v.mux.ServeHTTP(w, req)
+		body := w.Body.String()
+		assert.Contains(t, body, "data-on:dblclick")
+		assert.Contains(t, body, "$"+sig.ID()+"=&#39;x&#39;")
+	})
+}
+
 func TestOnKeyDownWithWindow(t *testing.T) {
 	var trigger *actionTrigger
 	v := New()
