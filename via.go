@@ -48,6 +48,7 @@ type V struct {
 	devModePageInitFnMap map[string]func(*Context)
 	sessionManager       *scs.SessionManager
 	pubsub               PubSub
+	actionRateLimit      RateLimitConfig
 	datastarPath         string
 	datastarContent      []byte
 	datastarOnce         sync.Once
@@ -131,6 +132,9 @@ func (v *V) Config(cfg Options) {
 	}
 	if cfg.ContextTTL != 0 {
 		v.cfg.ContextTTL = cfg.ContextTTL
+	}
+	if cfg.ActionRateLimit.Rate != 0 || cfg.ActionRateLimit.Burst != 0 {
+		v.actionRateLimit = cfg.ActionRateLimit
 	}
 }
 
@@ -639,13 +643,23 @@ func New() *V {
 			http.Error(w, "invalid CSRF token", http.StatusForbidden)
 			return
 		}
+		if c.actionLimiter != nil && !c.actionLimiter.Allow() {
+			v.logWarn(c, "action '%s' rate limited", actionID)
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
 		c.reqCtx = r.Context()
-		actionFn, err := c.getActionFn(actionID)
+		entry, err := c.getAction(actionID)
 		if err != nil {
 			v.logDebug(c, "action '%s' failed: %v", actionID, err)
 			return
 		}
-		// log err if actionFn panics
+		if entry.limiter != nil && !entry.limiter.Allow() {
+			v.logWarn(c, "action '%s' rate limited (per-action)", actionID)
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		// log err if action panics
 		defer func() {
 			if r := recover(); r != nil {
 				v.logErr(c, "action '%s' failed: %v", actionID, r)
@@ -653,7 +667,7 @@ func New() *V {
 		}()
 
 		c.injectSignals(sigs)
-		actionFn()
+		entry.fn()
 	})
 
 	v.mux.HandleFunc("POST /_session/close", func(w http.ResponseWriter, r *http.Request) {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ryanhamamura/via/h"
+	"golang.org/x/time/rate"
 )
 
 // Context is the living bridge between Go and the browser.
@@ -27,7 +28,8 @@ type Context struct {
 	componentRegistry map[string]*Context
 	parentPageCtx     *Context
 	patchChan         chan patch
-	actionRegistry    map[string]func()
+	actionLimiter     *rate.Limiter
+	actionRegistry    map[string]actionEntry
 	signals           *sync.Map
 	mu                sync.RWMutex
 	ctxDisposedChan   chan struct{}
@@ -104,26 +106,31 @@ func (c *Context) isComponent() bool {
 //		 	 	h.Button(h.Text("Increment n"), increment.OnClick()),
 //		 )
 //	})
-func (c *Context) Action(f func()) *actionTrigger {
+func (c *Context) Action(f func(), opts ...ActionOption) *actionTrigger {
 	id := genRandID()
 	if f == nil {
 		c.app.logErr(c, "failed to bind action '%s' to context: nil func", id)
 		return nil
 	}
 
+	entry := actionEntry{fn: f}
+	for _, opt := range opts {
+		opt(&entry)
+	}
+
 	if c.isComponent() {
-		c.parentPageCtx.actionRegistry[id] = f
+		c.parentPageCtx.actionRegistry[id] = entry
 	} else {
-		c.actionRegistry[id] = f
+		c.actionRegistry[id] = entry
 	}
 	return &actionTrigger{id}
 }
 
-func (c *Context) getActionFn(id string) (func(), error) {
-	if f, ok := c.actionRegistry[id]; ok {
-		return f, nil
+func (c *Context) getAction(id string) (actionEntry, error) {
+	if e, ok := c.actionRegistry[id]; ok {
+		return e, nil
 	}
-	return nil, fmt.Errorf("action '%s' not found", id)
+	return actionEntry{}, fmt.Errorf("action '%s' not found", id)
 }
 
 // OnInterval starts a go routine that sets a time.Ticker with the given duration and executes
@@ -482,7 +489,8 @@ func newContext(id string, route string, v *V) *Context {
 		routeParams:       make(map[string]string),
 		app:               v,
 		componentRegistry: make(map[string]*Context),
-		actionRegistry:    make(map[string]func()),
+		actionLimiter:     newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
+		actionRegistry:    make(map[string]actionEntry),
 		signals:           new(sync.Map),
 		patchChan:         make(chan patch, 1),
 		ctxDisposedChan:   make(chan struct{}, 1),

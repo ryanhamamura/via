@@ -61,4 +61,9 @@ type Options struct {
 	// connection before the background reaper disposes it.
 	// Default: 30s. Negative value disables the reaper.
 	ContextTTL time.Duration
+
+	// ActionRateLimit configures the default token-bucket rate limiter for
+	// action endpoints. Zero values use built-in defaults (10 req/s, burst 20).
+	// Set Rate to -1 to disable rate limiting entirely.
+	ActionRateLimit RateLimitConfig
 }
