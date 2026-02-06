@@ -4,7 +4,9 @@ package vianats
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/delaneyj/toolbelt/embeddednats"
 	"github.com/nats-io/nats.go"
@@ -75,4 +77,51 @@ func (n *NATS) Conn() *nats.Conn {
 // JetStream returns the JetStream context for stream configuration and replay.
 func (n *NATS) JetStream() nats.JetStreamContext {
 	return n.js
+}
+
+// StreamConfig holds the parameters for creating or updating a JetStream stream.
+type StreamConfig struct {
+	Name     string
+	Subjects []string
+	MaxMsgs  int64
+	MaxAge   time.Duration
+}
+
+// EnsureStream creates or updates a JetStream stream matching cfg.
+func EnsureStream(n *NATS, cfg StreamConfig) error {
+	_, err := n.js.AddStream(&nats.StreamConfig{
+		Name:      cfg.Name,
+		Subjects:  cfg.Subjects,
+		Retention: nats.LimitsPolicy,
+		MaxMsgs:   cfg.MaxMsgs,
+		MaxAge:    cfg.MaxAge,
+	})
+	return err
+}
+
+// ReplayHistory fetches the last limit messages from subject,
+// deserializing each as T. Returns an empty slice if nothing is available.
+func ReplayHistory[T any](n *NATS, subject string, limit int) ([]T, error) {
+	sub, err := n.js.SubscribeSync(subject, nats.DeliverAll(), nats.OrderedConsumer())
+	if err != nil {
+		return nil, err
+	}
+	defer sub.Unsubscribe()
+
+	var msgs []T
+	for {
+		raw, err := sub.NextMsg(200 * time.Millisecond)
+		if err != nil {
+			break
+		}
+		var msg T
+		if json.Unmarshal(raw.Data, &msg) == nil {
+			msgs = append(msgs, msg)
+		}
+	}
+
+	if limit > 0 && len(msgs) > limit {
+		msgs = msgs[len(msgs)-limit:]
+	}
+	return msgs, nil
 }

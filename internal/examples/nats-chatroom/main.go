@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"math/rand"
 	"sync"
 	"time"
 
-	"github.com/nats-io/nats.go"
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
 	"github.com/ryanhamamura/via/vianats"
@@ -46,15 +44,15 @@ func main() {
 	}
 	defer ps.Close()
 
-	// Create JetStream stream for message durability
-	js := ps.JetStream()
-	js.AddStream(&nats.StreamConfig{
-		Name:      "CHAT",
-		Subjects:  []string{"chat.>"},
-		Retention: nats.LimitsPolicy,
-		MaxMsgs:   1000,
-		MaxAge:    24 * time.Hour,
+	err = vianats.EnsureStream(ps, vianats.StreamConfig{
+		Name:     "CHAT",
+		Subjects: []string{"chat.>"},
+		MaxMsgs:  1000,
+		MaxAge:   24 * time.Hour,
 	})
+	if err != nil {
+		log.Fatalf("Failed to ensure stream: %v", err)
+	}
 
 	v := via.New()
 	v.Config(via.Options{
@@ -147,30 +145,14 @@ func main() {
 				currentSub.Unsubscribe()
 			}
 
-			// Replay history from JetStream before subscribing for real-time
 			subject := "chat.room." + room
-			if hist, err := js.SubscribeSync(subject, nats.DeliverAll(), nats.OrderedConsumer()); err == nil {
-				for {
-					msg, err := hist.NextMsg(200 * time.Millisecond)
-					if err != nil {
-						break
-					}
-					var chatMsg ChatMessage
-					if json.Unmarshal(msg.Data, &chatMsg) == nil {
-						messages = append(messages, chatMsg)
-					}
-				}
-				hist.Unsubscribe()
-				if len(messages) > 50 {
-					messages = messages[len(messages)-50:]
-				}
+
+			// Replay history from JetStream
+			if hist, err := vianats.ReplayHistory[ChatMessage](ps, subject, 50); err == nil {
+				messages = hist
 			}
 
-			sub, _ := c.Subscribe(subject, func(data []byte) {
-				var msg ChatMessage
-				if err := json.Unmarshal(data, &msg); err != nil {
-					return
-				}
+			sub, _ := via.Subscribe(c, subject, func(msg ChatMessage) {
 				messagesMu.Lock()
 				messages = append(messages, msg)
 				if len(messages) > 50 {
@@ -203,12 +185,11 @@ func main() {
 			}
 			statement.SetValue("")
 
-			data, _ := json.Marshal(ChatMessage{
+			via.Publish(c, "chat.room."+currentRoom, ChatMessage{
 				User:    currentUser,
 				Message: msg,
 				Time:    time.Now().UnixMilli(),
 			})
-			c.Publish("chat.room."+currentRoom, data)
 		})
 
 		c.View(func() h.H {
