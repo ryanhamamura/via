@@ -20,6 +20,7 @@ import (
 type Context struct {
 	id                string
 	route             string
+	csrfToken         string
 	app               *V
 	view              func() h.H
 	routeParams       map[string]string
@@ -477,6 +478,7 @@ func newContext(id string, route string, v *V) *Context {
 	return &Context{
 		id:                id,
 		route:             route,
+		csrfToken:         genCSRFToken(),
 		routeParams:       make(map[string]string),
 		app:               v,
 		componentRegistry: make(map[string]*Context),

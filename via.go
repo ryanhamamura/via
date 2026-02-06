@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/rand"
 	_ "embed"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -203,7 +204,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 		headElements := []h.H{h.Script(h.Type("module"), h.Src(v.datastarPath))}
 		headElements = append(headElements, v.documentHeadIncludes...)
 		headElements = append(headElements,
-			h.Meta(h.Data("signals", fmt.Sprintf("{'via-ctx':'%s'}", id))),
+			h.Meta(h.Data("signals", fmt.Sprintf("{'via-ctx':'%s','via-csrf':'%s'}", id, c.csrfToken))),
 			h.Meta(h.Data("init", "@get('/_sse')")),
 			h.Meta(h.Data("init", fmt.Sprintf(`window.addEventListener('beforeunload', (evt) => {
 			navigator.sendBeacon('/_session/close', '%s');});`, c.id))),
@@ -632,6 +633,12 @@ func New() *V {
 			v.logErr(nil, "action '%s' failed: %v", actionID, err)
 			return
 		}
+		csrfToken, _ := sigs["via-csrf"].(string)
+		if subtle.ConstantTimeCompare([]byte(csrfToken), []byte(c.csrfToken)) != 1 {
+			v.logWarn(c, "action '%s' rejected: invalid CSRF token", actionID)
+			http.Error(w, "invalid CSRF token", http.StatusForbidden)
+			return
+		}
 		c.reqCtx = r.Context()
 		actionFn, err := c.getActionFn(actionID)
 		if err != nil {
@@ -673,6 +680,12 @@ func genRandID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)[:8]
+}
+
+func genCSRFToken() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func extractParams(pattern, path string) map[string]string {
