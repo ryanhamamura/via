@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -25,8 +24,7 @@ type Context struct {
 	app               *V
 	view              func() h.H
 	routeParams       map[string]string
-	componentRegistry map[string]*Context
-	parentPageCtx     *Context
+	parentPageCtx *Context
 	patchChan         chan patch
 	actionLimiter     *rate.Limiter
 	actionRegistry    map[string]actionEntry
@@ -81,7 +79,6 @@ func (c *Context) Component(initCtx func(c *Context)) func() h.H {
 		compCtx.parentPageCtx = c
 	}
 	initCtx(compCtx)
-	c.componentRegistry[id] = compCtx
 	return compCtx.view
 }
 
@@ -208,14 +205,14 @@ func (c *Context) injectSignals(sigs map[string]any) {
 	defer c.mu.Unlock()
 
 	for sigID, val := range sigs {
-		if _, ok := c.signals.Load(sigID); !ok {
+		item, ok := c.signals.Load(sigID)
+		if !ok {
 			c.signals.Store(sigID, &signal{
 				id:  sigID,
 				val: val,
 			})
 			continue
 		}
-		item, _ := c.signals.Load(sigID)
 		if sig, ok := item.(*signal); ok {
 			sig.val = val
 			sig.changed = false
@@ -266,7 +263,7 @@ func (c *Context) sendPatch(p patch) {
 // Sync pushes the current view state and signal changes to the browser immediately
 // over the live SSE event stream.
 func (c *Context) Sync() {
-	elemsPatch := bytes.NewBuffer(make([]byte, 0))
+	elemsPatch := new(bytes.Buffer)
 	if err := c.view().Render(elemsPatch); err != nil {
 		c.app.logErr(c, "sync view failed: %v", err)
 		return
@@ -395,12 +392,9 @@ func (c *Context) injectRouteParams(params map[string]string) {
 	if params == nil {
 		return
 	}
-	m := make(map[string]string)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	maps.Copy(m, params)
-	c.routeParams = m
-
+	c.routeParams = params
 }
 
 // GetPathParam retrieves the value from the page request URL for the given parameter name
@@ -497,8 +491,7 @@ func newContext(id string, route string, v *V) *Context {
 		csrfToken:         genCSRFToken(),
 		routeParams:       make(map[string]string),
 		app:               v,
-		componentRegistry: make(map[string]*Context),
-		actionLimiter:     newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
+		actionLimiter: newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
 		actionRegistry:    make(map[string]actionEntry),
 		signals:           new(sync.Map),
 		patchChan:         make(chan patch, 1),

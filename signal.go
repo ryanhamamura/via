@@ -81,26 +81,3 @@ func (s *signal) Int() int {
 	return 0
 }
 
-// Int64 tries to read the signal value as an int64.
-// Returns the value or 0 on failure.
-func (s *signal) Int64() int64 {
-	if n, err := strconv.ParseInt(s.String(), 10, 64); err == nil {
-		return n
-	}
-	return 0
-}
-
-// Float64 tries to read the signal value as a float64.
-// Returns the value or 0.0 on failure.
-func (s *signal) Float() float64 {
-	if n, err := strconv.ParseFloat(s.String(), 64); err == nil {
-		return n
-	}
-	return 0.0
-}
-
-// Bytes tries to read the signal value as a []byte
-// Returns the value or an empty []byte on failure.
-func (s *signal) Bytes() []byte {
-	return []byte(s.String())
-}

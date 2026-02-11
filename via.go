@@ -234,8 +234,7 @@ func (v *V) page(route string, raw, wrapped func(*Context)) {
 			Title:     v.cfg.DocumentTitle,
 			Head:      headElements,
 			Body:      bodyElements,
-			HTMLAttrs: []h.H{},
-		})
+			})
 		_ = view.Render(w)
 	}))
 }
@@ -243,17 +242,9 @@ func (v *V) page(route string, raw, wrapped func(*Context)) {
 func (v *V) registerCtx(c *Context) {
 	v.contextRegistryMutex.Lock()
 	defer v.contextRegistryMutex.Unlock()
-	if c == nil {
-		v.logErr(c, "failed to add nil context to registry")
-		return
-	}
 	v.contextRegistry[c.id] = c
 	v.logDebug(c, "new context added to registry")
-	v.logDebug(nil, "number of sessions in registry: %d", v.currSessionNum())
-}
-
-func (v *V) currSessionNum() int {
-	return len(v.contextRegistry)
+	v.logDebug(nil, "number of sessions in registry: %d", len(v.contextRegistry))
 }
 
 func (v *V) cleanupCtx(c *Context) {
@@ -273,7 +264,7 @@ func (v *V) unregisterCtx(c *Context) {
 	defer v.contextRegistryMutex.Unlock()
 	v.logDebug(c, "ctx removed from registry")
 	delete(v.contextRegistry, c.id)
-	v.logDebug(nil, "number of sessions in registry: %d", v.currSessionNum())
+	v.logDebug(nil, "number of sessions in registry: %d", len(v.contextRegistry))
 }
 
 func (v *V) getCtx(id string) (*Context, error) {
@@ -363,16 +354,12 @@ func (v *V) Start() {
 		return
 	}
 
-	v.shutdown()
+	v.Shutdown()
 }
 
 // Shutdown gracefully shuts down the server and all contexts.
 // Safe for programmatic or test use.
 func (v *V) Shutdown() {
-	v.shutdown()
-}
-
-func (v *V) shutdown() {
 	if v.reaperStop != nil {
 		close(v.reaperStop)
 	}
@@ -622,9 +609,7 @@ func New() *V {
 		c.sseConnected.Store(true)
 		v.logDebug(c, "SSE connection established")
 
-		go func() {
-			c.Sync()
-		}()
+		go c.Sync()
 
 		for {
 			select {
@@ -744,9 +729,9 @@ func New() *V {
 }
 
 func genRandID() string {
-	b := make([]byte, 16)
+	b := make([]byte, 4)
 	rand.Read(b)
-	return hex.EncodeToString(b)[:8]
+	return hex.EncodeToString(b)
 }
 
 func genCSRFToken() string {
@@ -767,7 +752,7 @@ func extractParams(pattern, path string) map[string]string {
 			key := p[i][1 : len(p[i])-1] // remove {}
 			params[key] = u[i]
 		} else if p[i] != u[i] {
-			continue
+			return nil
 		}
 	}
 	return params
