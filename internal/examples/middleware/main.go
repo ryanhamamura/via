@@ -96,6 +96,14 @@ func main() {
 		})
 	})
 
+	// Per-action middleware: only superadmins can invoke this action.
+	requireSuperAdmin := func(c *via.Context, next func()) {
+		if c.Session().GetString("role") != "superadmin" {
+			return
+		}
+		next()
+	}
+
 	// Admin: dashboard (requires authRequired + auditLog)
 	admin.Page("/dashboard", func(c *via.Context) {
 		logout := c.Action(func() {
@@ -103,6 +111,11 @@ func main() {
 			c.Session().Delete("username")
 			c.Redirect("/login")
 		})
+
+		dangerAction := c.Action(func() {
+			fmt.Printf("[danger] executed by %s\n", c.Session().GetString("username"))
+			c.Sync()
+		}, via.WithMiddleware(requireSuperAdmin))
 
 		c.View(func() h.H {
 			username := c.Session().GetString("username")
@@ -112,6 +125,11 @@ func main() {
 				h.Ul(
 					h.Li(h.A(h.Href("/admin/super/settings"), h.Text("Super Admin Settings"))),
 				),
+				h.H2(h.Text("Danger Zone")),
+				h.P(h.Text("This action is protected by per-action middleware (superadmin only):")),
+				h.Button(h.Text("Delete Everything"), dangerAction.OnClick()),
+				h.Br(),
+				h.Br(),
 				h.Button(h.Text("Logout"), logout.OnClick()),
 			)
 		})

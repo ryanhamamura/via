@@ -54,6 +54,7 @@ type V struct {
 	datastarContent      []byte
 	datastarOnce         sync.Once
 	reaperStop           chan struct{}
+	middleware           []Middleware
 }
 
 func (v *V) logEvent(evt *zerolog.Event, c *Context) *zerolog.Event {
@@ -170,8 +171,16 @@ func (v *V) AppendToFoot(elements ...h.H) {
 //		})
 //	})
 func (v *V) Page(route string, initContextFn func(c *Context)) {
+	wrapped := chainMiddleware(v.middleware, initContextFn)
+	v.page(route, initContextFn, wrapped)
+}
+
+// page registers a route with separate raw and wrapped init functions.
+// raw is used for the panic-check at registration time; wrapped includes
+// any middleware and is used as the live handler.
+func (v *V) page(route string, raw, wrapped func(*Context)) {
 	v.ensureDatastarHandler()
-	// check for panics
+	// check for panics using the raw handler (no middleware)
 	func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -180,14 +189,13 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 			}
 		}()
 		c := newContext("", "", v)
-		initContextFn(c)
+		raw(c)
 		c.view()
 		c.stopAllRoutines()
 	}()
 
-	// save page init function allows devmode to restore persisted ctx later
 	if v.cfg.DevMode {
-		v.devModePageInitFnMap[route] = initContextFn
+		v.devModePageInitFnMap[route] = wrapped
 	}
 	v.mux.HandleFunc("GET "+route, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v.logDebug(nil, "GET %s", r.URL.String())
@@ -201,7 +209,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 		c.reqCtx = r.Context()
 		routeParams := extractParams(route, r.URL.Path)
 		c.injectRouteParams(routeParams)
-		initContextFn(c)
+		wrapped(c)
 		v.registerCtx(c)
 		if v.cfg.DevMode {
 			v.devModePersist(c)
@@ -708,7 +716,11 @@ func New() *V {
 		}()
 
 		c.injectSignals(sigs)
-		entry.fn()
+		if len(entry.middleware) > 0 {
+			chainMiddleware(entry.middleware, func(_ *Context) { entry.fn() })(c)
+		} else {
+			entry.fn()
+		}
 	})
 
 	v.mux.HandleFunc("POST /_session/close", func(w http.ResponseWriter, r *http.Request) {
