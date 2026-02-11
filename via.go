@@ -54,6 +54,7 @@ type V struct {
 	datastarContent      []byte
 	datastarOnce         sync.Once
 	reaperStop           chan struct{}
+	middleware           []Middleware
 }
 
 func (v *V) logEvent(evt *zerolog.Event, c *Context) *zerolog.Event {
@@ -170,8 +171,16 @@ func (v *V) AppendToFoot(elements ...h.H) {
 //		})
 //	})
 func (v *V) Page(route string, initContextFn func(c *Context)) {
+	wrapped := chainMiddleware(v.middleware, initContextFn)
+	v.page(route, initContextFn, wrapped)
+}
+
+// page registers a route with separate raw and wrapped init functions.
+// raw is used for the panic-check at registration time; wrapped includes
+// any middleware and is used as the live handler.
+func (v *V) page(route string, raw, wrapped func(*Context)) {
 	v.ensureDatastarHandler()
-	// check for panics
+	// check for panics using the raw handler (no middleware)
 	func() {
 		defer func() {
 			if err := recover(); err != nil {
@@ -180,14 +189,13 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 			}
 		}()
 		c := newContext("", "", v)
-		initContextFn(c)
+		raw(c)
 		c.view()
 		c.stopAllRoutines()
 	}()
 
-	// save page init function allows devmode to restore persisted ctx later
 	if v.cfg.DevMode {
-		v.devModePageInitFnMap[route] = initContextFn
+		v.devModePageInitFnMap[route] = wrapped
 	}
 	v.mux.HandleFunc("GET "+route, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		v.logDebug(nil, "GET %s", r.URL.String())
@@ -201,7 +209,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 		c.reqCtx = r.Context()
 		routeParams := extractParams(route, r.URL.Path)
 		c.injectRouteParams(routeParams)
-		initContextFn(c)
+		wrapped(c)
 		v.registerCtx(c)
 		if v.cfg.DevMode {
 			v.devModePersist(c)
@@ -226,8 +234,7 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 			Title:     v.cfg.DocumentTitle,
 			Head:      headElements,
 			Body:      bodyElements,
-			HTMLAttrs: []h.H{},
-		})
+			})
 		_ = view.Render(w)
 	}))
 }
@@ -235,17 +242,9 @@ func (v *V) Page(route string, initContextFn func(c *Context)) {
 func (v *V) registerCtx(c *Context) {
 	v.contextRegistryMutex.Lock()
 	defer v.contextRegistryMutex.Unlock()
-	if c == nil {
-		v.logErr(c, "failed to add nil context to registry")
-		return
-	}
 	v.contextRegistry[c.id] = c
 	v.logDebug(c, "new context added to registry")
-	v.logDebug(nil, "number of sessions in registry: %d", v.currSessionNum())
-}
-
-func (v *V) currSessionNum() int {
-	return len(v.contextRegistry)
+	v.logDebug(nil, "number of sessions in registry: %d", len(v.contextRegistry))
 }
 
 func (v *V) cleanupCtx(c *Context) {
@@ -265,7 +264,7 @@ func (v *V) unregisterCtx(c *Context) {
 	defer v.contextRegistryMutex.Unlock()
 	v.logDebug(c, "ctx removed from registry")
 	delete(v.contextRegistry, c.id)
-	v.logDebug(nil, "number of sessions in registry: %d", v.currSessionNum())
+	v.logDebug(nil, "number of sessions in registry: %d", len(v.contextRegistry))
 }
 
 func (v *V) getCtx(id string) (*Context, error) {
@@ -355,16 +354,12 @@ func (v *V) Start() {
 		return
 	}
 
-	v.shutdown()
+	v.Shutdown()
 }
 
 // Shutdown gracefully shuts down the server and all contexts.
 // Safe for programmatic or test use.
 func (v *V) Shutdown() {
-	v.shutdown()
-}
-
-func (v *V) shutdown() {
 	if v.reaperStop != nil {
 		close(v.reaperStop)
 	}
@@ -614,9 +609,7 @@ func New() *V {
 		c.sseConnected.Store(true)
 		v.logDebug(c, "SSE connection established")
 
-		go func() {
-			c.Sync()
-		}()
+		go c.Sync()
 
 		for {
 			select {
@@ -708,7 +701,11 @@ func New() *V {
 		}()
 
 		c.injectSignals(sigs)
-		entry.fn()
+		if len(entry.middleware) > 0 {
+			chainMiddleware(entry.middleware, func(_ *Context) { entry.fn() })(c)
+		} else {
+			entry.fn()
+		}
 	})
 
 	v.mux.HandleFunc("POST /_session/close", func(w http.ResponseWriter, r *http.Request) {
@@ -732,9 +729,9 @@ func New() *V {
 }
 
 func genRandID() string {
-	b := make([]byte, 16)
+	b := make([]byte, 4)
 	rand.Read(b)
-	return hex.EncodeToString(b)[:8]
+	return hex.EncodeToString(b)
 }
 
 func genCSRFToken() string {
@@ -755,7 +752,7 @@ func extractParams(pattern, path string) map[string]string {
 			key := p[i][1 : len(p[i])-1] // remove {}
 			params[key] = u[i]
 		} else if p[i] != u[i] {
-			continue
+			return nil
 		}
 	}
 	return params

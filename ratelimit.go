@@ -18,8 +18,9 @@ type RateLimitConfig struct {
 type ActionOption func(*actionEntry)
 
 type actionEntry struct {
-	fn      func()
-	limiter *rate.Limiter // nil = use context default
+	fn         func()
+	limiter    *rate.Limiter // nil = use context default
+	middleware []Middleware
 }
 
 // WithRateLimit returns an ActionOption that gives this action its own

@@ -29,7 +29,17 @@ func main() {
 		SessionManager: sm,
 	})
 
-	// Login page
+	// Auth middleware — redirects unauthenticated users to /login
+	authRequired := func(c *via.Context, next func()) {
+		if c.Session().GetString("username") == "" {
+			c.Session().Set("flash", "Please log in first")
+			c.RedirectView("/login")
+			return
+		}
+		next()
+	}
+
+	// Login page (public)
 	v.Page("/login", func(c *via.Context) {
 		flash := c.Session().PopString("flash")
 		usernameInput := c.Signal("")
@@ -64,8 +74,10 @@ func main() {
 		})
 	})
 
-	// Dashboard page (protected)
-	v.Page("/dashboard", func(c *via.Context) {
+	// Protected pages
+	protected := v.Group("", authRequired)
+
+	protected.Page("/dashboard", func(c *via.Context) {
 		logout := c.Action(func() {
 			c.Session().Set("flash", "Goodbye!")
 			c.Session().Delete("username")
@@ -74,14 +86,6 @@ func main() {
 
 		c.View(func() h.H {
 			username := c.Session().GetString("username")
-
-			// Not logged in? Redirect to login
-			if username == "" {
-				c.Session().Set("flash", "Please log in first")
-				c.Redirect("/login")
-				return h.Div()
-			}
-
 			flash := c.Session().PopString("flash")
 			var flashMsg h.H
 			if flash != "" {
