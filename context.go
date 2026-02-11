@@ -331,6 +331,15 @@ func (c *Context) ExecScript(s string) {
 	c.sendPatch(patch{patchTypeScript, s})
 }
 
+// RedirectView sets a view that redirects the browser to the given URL.
+// Use this in middleware to abort the chain and redirect in one step.
+func (c *Context) RedirectView(url string) {
+	c.View(func() h.H {
+		c.Redirect(url)
+		return h.Div()
+	})
+}
+
 // Redirect navigates the browser to the given URL.
 // This triggers a full page navigation - the current context will be disposed
 // and a new context created at the destination URL.
