@@ -480,6 +480,34 @@ func (c *Context) unsubscribeAll() {
 	}
 }
 
+// Field creates a signal with validation rules attached.
+// The initial value seeds both the signal and the reset target.
+func (c *Context) Field(initial any, rules ...Rule) *Field {
+	return &Field{
+		signal:     c.Signal(initial),
+		rules:      rules,
+		initialVal: initial,
+	}
+}
+
+// ValidateAll runs Validate on every field, returning true only if all pass.
+func (c *Context) ValidateAll(fields ...*Field) bool {
+	ok := true
+	for _, f := range fields {
+		if !f.Validate() {
+			ok = false
+		}
+	}
+	return ok
+}
+
+// ResetFields resets every field to its initial value and clears errors.
+func (c *Context) ResetFields(fields ...*Field) {
+	for _, f := range fields {
+		f.Reset()
+	}
+}
+
 func newContext(id string, route string, v *V) *Context {
 	if v == nil {
 		panic("create context failed: app pointer is nil")
