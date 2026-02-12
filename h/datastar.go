@@ -11,3 +11,10 @@ func DataEffect(expression string) H {
 func DataIgnoreMorph() H {
 	return Attr("data-ignore-morph")
 }
+
+// DataViewTransition sets the view-transition-name CSS property on an element
+// via an inline style. Elements with matching names animate between pages
+// during SPA navigation.
+func DataViewTransition(name string) H {
+	return Attr("style", "view-transition-name: "+name)
+}

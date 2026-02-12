@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -31,6 +32,7 @@ type Context struct {
 	signals           *sync.Map
 	mu                sync.RWMutex
 	ctxDisposedChan   chan struct{}
+	pageStopChan      chan struct{}
 	reqCtx            context.Context
 	fields            []*Field
 	subscriptions     []Subscription
@@ -48,7 +50,11 @@ func (c *Context) View(f func() h.H) {
 	if f == nil {
 		panic("nil viewfn")
 	}
-	c.view = func() h.H { return h.Div(h.ID(c.id), f()) }
+	if c.app.layout != nil {
+		c.view = func() h.H { return h.Div(h.ID(c.id), c.app.layout(f)) }
+	} else {
+		c.view = func() h.H { return h.Div(h.ID(c.id), f()) }
+	}
 }
 
 // Component registers a subcontext that has self contained data, actions and signals.
@@ -135,13 +141,15 @@ func (c *Context) getAction(id string) (actionEntry, error) {
 // The goroutine is tied to the context lifecycle and will stop when the context is disposed.
 // Returns a func() that stops the interval when called.
 func (c *Context) OnInterval(duration time.Duration, handler func()) func() {
-	var cn chan struct{}
-	if c.isComponent() { // components use the chan on the parent page ctx
-		cn = c.parentPageCtx.ctxDisposedChan
+	var disposeCh, pageCh chan struct{}
+	if c.isComponent() {
+		disposeCh = c.parentPageCtx.ctxDisposedChan
+		pageCh = c.parentPageCtx.pageStopChan
 	} else {
-		cn = c.ctxDisposedChan
+		disposeCh = c.ctxDisposedChan
+		pageCh = c.pageStopChan
 	}
-	return newOnInterval(cn, duration, handler)
+	return newOnInterval(disposeCh, pageCh, duration, handler)
 }
 
 // Signal creates a reactive signal and initializes it with the given value.
@@ -369,6 +377,60 @@ func (c *Context) ReplaceURLf(format string, a ...any) {
 	c.ReplaceURL(fmt.Sprintf(format, a...))
 }
 
+// resetPageState tears down page-specific state (intervals, subscriptions,
+// actions, signals, fields) without disposing the context itself. The SSE
+// connection and context lifetime are unaffected.
+func (c *Context) resetPageState() {
+	close(c.pageStopChan)
+	c.unsubscribeAll()
+	c.mu.Lock()
+	c.actionRegistry = make(map[string]actionEntry)
+	c.signals = new(sync.Map)
+	c.fields = nil
+	c.pageStopChan = make(chan struct{})
+	c.mu.Unlock()
+}
+
+// Navigate performs an SPA navigation to the given path. It resets page state,
+// runs the target page's init function (with middleware), and pushes the new
+// view over the existing SSE connection with a view transition animation.
+// If popstate is true, replaceState is used instead of pushState.
+func (c *Context) Navigate(path string, popstate bool) {
+	route, initFn, params := c.app.matchRoute(path)
+	if initFn == nil {
+		c.Redirect(path)
+		return
+	}
+	c.resetPageState()
+	c.route = route
+	c.injectRouteParams(params)
+	initFn(c)
+	c.syncWithViewTransition()
+	escaped := url.PathEscape(path)
+	if popstate {
+		c.ExecScript(fmt.Sprintf("history.replaceState({},'',decodeURIComponent('%s'))", escaped))
+	} else {
+		c.ExecScript(fmt.Sprintf("history.pushState({},'',decodeURIComponent('%s'))", escaped))
+	}
+}
+
+// syncWithViewTransition renders the view and sends it as a PatchElements
+// with the view transition flag, plus any changed signals.
+func (c *Context) syncWithViewTransition() {
+	elemsPatch := new(bytes.Buffer)
+	if err := c.view().Render(elemsPatch); err != nil {
+		c.app.logErr(c, "sync view failed: %v", err)
+		return
+	}
+	c.sendPatch(patch{patchTypeElementsWithVT, elemsPatch.String()})
+
+	updatedSigs := c.prepareSignalsForPatch()
+	if len(updatedSigs) != 0 {
+		outgoingSigs, _ := json.Marshal(updatedSigs)
+		c.sendPatch(patch{patchTypeSignals, string(outgoingSigs)})
+	}
+}
+
 // dispose idempotently tears down this context: unsubscribes all pubsub
 // subscriptions and closes ctxDisposedChan to stop routines and exit the SSE loop.
 func (c *Context) dispose() {
@@ -539,8 +601,9 @@ func newContext(id string, route string, v *V) *Context {
 		actionLimiter: newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
 		actionRegistry:    make(map[string]actionEntry),
 		signals:           new(sync.Map),
-		patchChan:         make(chan patch, 1),
+		patchChan:         make(chan patch, 8),
 		ctxDisposedChan:   make(chan struct{}, 1),
+		pageStopChan:      make(chan struct{}),
 		createdAt:         time.Now(),
 	}
 }

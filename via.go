@@ -35,6 +35,9 @@ import (
 //go:embed datastar.js
 var datastarJS []byte
 
+//go:embed navigate.js
+var navigateJS []byte
+
 // V is the root application.
 // It manages page routing, user sessions, and SSE connections for live updates.
 type V struct {
@@ -47,6 +50,7 @@ type V struct {
 	documentHeadIncludes []h.H
 	documentFootIncludes []h.H
 	devModePageInitFnMap map[string]func(*Context)
+	pageRegistry         map[string]func(*Context)
 	sessionManager       *scs.SessionManager
 	pubsub               PubSub
 	defaultNATS          *defaultNATS
@@ -56,6 +60,7 @@ type V struct {
 	datastarOnce         sync.Once
 	reaperStop           chan struct{}
 	middleware           []Middleware
+	layout               func(func() h.H) h.H
 }
 
 func (v *V) logEvent(evt *zerolog.Event, c *Context) *zerolog.Event {
@@ -196,6 +201,7 @@ func (v *V) page(route string, raw, wrapped func(*Context)) {
 		c.stopAllRoutines()
 	}()
 
+	v.pageRegistry[route] = wrapped
 	if v.cfg.DevMode {
 		v.devModePageInitFnMap[route] = wrapped
 	}
@@ -223,6 +229,8 @@ func (v *V) page(route string, raw, wrapped func(*Context)) {
 			h.Meta(h.Data("init", "@get('/_sse')")),
 			h.Meta(h.Data("init", fmt.Sprintf(`window.addEventListener('beforeunload', (evt) => {
 			navigator.sendBeacon('/_session/close', '%s');});`, c.id))),
+			h.Meta(h.Attr("name", "view-transition"), h.Attr("content", "same-origin")),
+			h.Script(h.Raw(string(navigateJS))),
 		)
 
 		bodyElements := []h.H{c.view()}
@@ -557,6 +565,7 @@ type patchType int
 
 const (
 	patchTypeElements = iota
+	patchTypeElementsWithVT
 	patchTypeSignals
 	patchTypeScript
 	patchTypeRedirect
@@ -577,6 +586,7 @@ func New() *V {
 		logger:               newConsoleLogger(zerolog.InfoLevel),
 		contextRegistry:      make(map[string]*Context),
 		devModePageInitFnMap: make(map[string]func(*Context)),
+		pageRegistry:         make(map[string]func(*Context)),
 		sessionManager:       scs.New(),
 		datastarPath:         "/_datastar.js",
 		datastarContent:      datastarJS,
@@ -627,9 +637,14 @@ func New() *V {
 				switch patch.typ {
 				case patchTypeElements:
 					if err := sse.PatchElements(patch.content); err != nil {
-						// Only log if connection wasn't closed (avoids noise during shutdown/tests)
 						if sse.Context().Err() == nil {
 							v.logErr(c, "PatchElements failed: %v", err)
+						}
+					}
+				case patchTypeElementsWithVT:
+					if err := sse.PatchElements(patch.content, datastar.WithViewTransitions()); err != nil {
+						if sse.Context().Err() == nil {
+							v.logErr(c, "PatchElements (view transition) failed: %v", err)
 						}
 					}
 				case patchTypeSignals:
@@ -711,6 +726,39 @@ func New() *V {
 		}
 	})
 
+	v.mux.HandleFunc("POST /_navigate", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		cID := r.FormValue("via-ctx")
+		csrfToken := r.FormValue("via-csrf")
+		navURL := r.FormValue("url")
+		popstate := r.FormValue("popstate") == "1"
+
+		if cID == "" || navURL == "" || !strings.HasPrefix(navURL, "/") {
+			http.Error(w, "missing or invalid parameters", http.StatusBadRequest)
+			return
+		}
+		c, err := v.getCtx(cID)
+		if err != nil {
+			v.logErr(nil, "navigate failed: %v", err)
+			http.Error(w, "context not found", http.StatusNotFound)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(csrfToken), []byte(c.csrfToken)) != 1 {
+			v.logWarn(c, "navigate rejected: invalid CSRF token")
+			http.Error(w, "invalid CSRF token", http.StatusForbidden)
+			return
+		}
+		if c.actionLimiter != nil && !c.actionLimiter.Allow() {
+			v.logWarn(c, "navigate rate limited")
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		c.reqCtx = r.Context()
+		v.logDebug(c, "SPA navigate to %s", navURL)
+		c.Navigate(navURL, popstate)
+		w.WriteHeader(http.StatusOK)
+	})
+
 	v.mux.HandleFunc("POST /_session/close", func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -768,4 +816,20 @@ func extractParams(pattern, path string) map[string]string {
 		}
 	}
 	return params
+}
+
+// matchRoute finds the registered page init function and extracted params for the given path.
+func (v *V) matchRoute(path string) (route string, initFn func(*Context), params map[string]string) {
+	for pattern, fn := range v.pageRegistry {
+		if p := extractParams(pattern, path); p != nil {
+			return pattern, fn, p
+		}
+	}
+	return "", nil, nil
+}
+
+// Layout sets a layout function that wraps every page's view.
+// The layout receives the page content as a function and returns the full view.
+func (v *V) Layout(f func(func() h.H) h.H) {
+	v.layout = f
 }

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-func newOnInterval(ctxDisposedChan chan struct{}, duration time.Duration, handler func()) func() {
+func newOnInterval(ctxDisposedChan, pageStopChan chan struct{}, duration time.Duration, handler func()) func() {
 	localInterrupt := make(chan struct{})
 	var stopped atomic.Bool
 
@@ -15,6 +15,8 @@ func newOnInterval(ctxDisposedChan chan struct{}, duration time.Duration, handle
 		for {
 			select {
 			case <-ctxDisposedChan:
+				return
+			case <-pageStopChan:
 				return
 			case <-localInterrupt:
 				return
