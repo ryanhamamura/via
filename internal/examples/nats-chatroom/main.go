@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"math/rand"
 	"sync"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
-	"github.com/ryanhamamura/via/vianats"
 )
 
 var (
@@ -36,15 +34,15 @@ func (u *UserInfo) Avatar() h.H {
 var roomNames = []string{"Go", "Rust", "Python", "JavaScript", "Clojure"}
 
 func main() {
-	ctx := context.Background()
+	v := via.New()
+	v.Config(via.Options{
+		DevMode:       true,
+		DocumentTitle: "NATS Chat",
+		LogLevel:      via.LogLevelInfo,
+		ServerAddress: ":7331",
+	})
 
-	ps, err := vianats.New(ctx, "./data/nats")
-	if err != nil {
-		log.Fatalf("Failed to start embedded NATS: %v", err)
-	}
-	defer ps.Close()
-
-	err = vianats.EnsureStream(ps, vianats.StreamConfig{
+	err := via.EnsureStream(v, via.StreamConfig{
 		Name:     "CHAT",
 		Subjects: []string{"chat.>"},
 		MaxMsgs:  1000,
@@ -53,15 +51,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to ensure stream: %v", err)
 	}
-
-	v := via.New()
-	v.Config(via.Options{
-		DevMode:       true,
-		DocumentTitle: "NATS Chat",
-		LogLevel:      via.LogLevelInfo,
-		ServerAddress: ":7331",
-		PubSub:        ps,
-	})
 
 	v.AppendToHead(
 		h.Link(h.Rel("stylesheet"), h.Href("https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css")),
@@ -148,7 +137,7 @@ func main() {
 			subject := "chat.room." + room
 
 			// Replay history from JetStream
-			if hist, err := vianats.ReplayHistory[ChatMessage](ps, subject, 50); err == nil {
+			if hist, err := via.ReplayHistory[ChatMessage](v, subject, 50); err == nil {
 				messages = hist
 			}
 

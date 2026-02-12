@@ -1,8 +1,8 @@
 package via
 
 import (
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/ryanhamamura/via/h"
 	"github.com/stretchr/testify/assert"
@@ -10,9 +10,8 @@ import (
 )
 
 func TestPublishSubscribe_RoundTrip(t *testing.T) {
-	ps := newMockPubSub()
 	v := New()
-	v.Config(Options{PubSub: ps})
+	defer v.Shutdown()
 
 	type event struct {
 		Name  string `json:"name"`
@@ -20,30 +19,32 @@ func TestPublishSubscribe_RoundTrip(t *testing.T) {
 	}
 
 	var got event
-	var wg sync.WaitGroup
-	wg.Add(1)
+	done := make(chan struct{})
 
 	c := newContext("typed-ctx", "/", v)
 	c.View(func() h.H { return h.Div() })
 
 	_, err := Subscribe(c, "events", func(e event) {
 		got = e
-		wg.Done()
+		close(done)
 	})
 	require.NoError(t, err)
 
 	err = Publish(c, "events", event{Name: "click", Count: 42})
 	require.NoError(t, err)
 
-	wg.Wait()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for message")
+	}
 	assert.Equal(t, "click", got.Name)
 	assert.Equal(t, 42, got.Count)
 }
 
 func TestSubscribe_SkipsBadJSON(t *testing.T) {
-	ps := newMockPubSub()
 	v := New()
-	v.Config(Options{PubSub: ps})
+	defer v.Shutdown()
 
 	type msg struct {
 		Text string `json:"text"`
@@ -62,5 +63,6 @@ func TestSubscribe_SkipsBadJSON(t *testing.T) {
 	err = c.Publish("topic", []byte("not json"))
 	require.NoError(t, err)
 
+	time.Sleep(50 * time.Millisecond)
 	assert.False(t, called)
 }

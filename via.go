@@ -49,6 +49,7 @@ type V struct {
 	devModePageInitFnMap map[string]func(*Context)
 	sessionManager       *scs.SessionManager
 	pubsub               PubSub
+	defaultNATS          *defaultNATS
 	actionRateLimit      RateLimitConfig
 	datastarPath         string
 	datastarContent      []byte
@@ -130,6 +131,7 @@ func (v *V) Config(cfg Options) {
 		v.datastarPath = cfg.DatastarPath
 	}
 	if cfg.PubSub != nil {
+		v.defaultNATS = nil
 		v.pubsub = cfg.PubSub
 	}
 	if cfg.ContextTTL != 0 {
@@ -379,6 +381,7 @@ func (v *V) Shutdown() {
 			v.logErr(nil, "pubsub close error: %v", err)
 		}
 	}
+	v.defaultNATS = nil
 
 	v.logInfo(nil, "shutdown complete")
 }
@@ -725,6 +728,15 @@ func New() *V {
 		v.logDebug(c, "session close event triggered")
 		v.cleanupCtx(c)
 	})
+
+	dn, err := getSharedNATS()
+	if err != nil {
+		v.logWarn(nil, "embedded NATS unavailable: %v", err)
+	} else {
+		v.defaultNATS = dn
+		v.pubsub = &natsRef{dn: dn}
+	}
+
 	return v
 }
 

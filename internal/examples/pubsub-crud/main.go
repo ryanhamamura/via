@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"fmt"
 	"html"
@@ -11,7 +10,6 @@ import (
 
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
-	"github.com/ryanhamamura/via/vianats"
 )
 
 var WithSignal = via.WithSignal
@@ -49,15 +47,15 @@ func findBookmark(id string) (Bookmark, int) {
 }
 
 func main() {
-	ctx := context.Background()
+	v := via.New()
+	v.Config(via.Options{
+		DevMode:       true,
+		DocumentTitle: "Bookmarks",
+		LogLevel:      via.LogLevelInfo,
+		ServerAddress: ":7331",
+	})
 
-	ps, err := vianats.New(ctx, "./data/nats")
-	if err != nil {
-		log.Fatalf("Failed to start embedded NATS: %v", err)
-	}
-	defer ps.Close()
-
-	err = vianats.EnsureStream(ps, vianats.StreamConfig{
+	err := via.EnsureStream(v, via.StreamConfig{
 		Name:     "BOOKMARKS",
 		Subjects: []string{"bookmarks.>"},
 		MaxMsgs:  1000,
@@ -66,15 +64,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to ensure stream: %v", err)
 	}
-
-	v := via.New()
-	v.Config(via.Options{
-		DevMode:       true,
-		DocumentTitle: "Bookmarks",
-		LogLevel:      via.LogLevelInfo,
-		ServerAddress: ":7331",
-		PubSub:        ps,
-	})
 
 	v.AppendToHead(
 		h.Link(h.Rel("stylesheet"), h.Href("https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css")),
