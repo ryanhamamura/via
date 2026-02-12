@@ -37,29 +37,33 @@ func main() {
 			return 1000 / time.Duration(refreshRate.Int()) * time.Millisecond
 		}
 
-		updateData := c.OnInterval(computedTickDuration(), func() {
-			ts := time.Now().UnixMilli()
-			val := rand.ExpFloat64() * 10
+		var stopUpdate func()
+		startInterval := func() {
+			stopUpdate = c.OnInterval(computedTickDuration(), func() {
+				ts := time.Now().UnixMilli()
+				val := rand.ExpFloat64() * 10
 
-			c.ExecScript(fmt.Sprintf(`
-			if (myChart) {
-				myChart.appendData({seriesIndex: 0, data: [[%d, %f]]});
-				myChart.setOption({},{notMerge:false,lazyUpdate:true});
-			};
-		`, ts, val))
-		})
-		updateData.Start()
+				c.ExecScript(fmt.Sprintf(`
+				if (myChart) {
+					myChart.appendData({seriesIndex: 0, data: [[%d, %f]]});
+					myChart.setOption({},{notMerge:false,lazyUpdate:true});
+				};
+			`, ts, val))
+			})
+		}
+		startInterval()
 
 		updateRefreshRate := c.Action(func() {
-			updateData.UpdateInterval(computedTickDuration())
+			stopUpdate()
+			startInterval()
 		})
 
 		toggleIsLive := c.Action(func() {
 			isLive = isLiveSig.Bool()
 			if isLive {
-				updateData.Start()
+				startInterval()
 			} else {
-				updateData.Stop()
+				stopUpdate()
 			}
 		})
 		c.View(func() h.H {

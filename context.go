@@ -131,17 +131,17 @@ func (c *Context) getAction(id string) (actionEntry, error) {
 	return actionEntry{}, fmt.Errorf("action '%s' not found", id)
 }
 
-// OnInterval starts a go routine that sets a time.Ticker with the given duration and executes
-// the given handler func() on every tick. Use *Routine.UpdateInterval to update the interval.
-func (c *Context) OnInterval(duration time.Duration, handler func()) *OnIntervalRoutine {
+// OnInterval starts a goroutine that executes handler on every tick of the given duration.
+// The goroutine is tied to the context lifecycle and will stop when the context is disposed.
+// Returns a func() that stops the interval when called.
+func (c *Context) OnInterval(duration time.Duration, handler func()) func() {
 	var cn chan struct{}
 	if c.isComponent() { // components use the chan on the parent page ctx
 		cn = c.parentPageCtx.ctxDisposedChan
 	} else {
 		cn = c.ctxDisposedChan
 	}
-	r := newOnIntervalRoutine(cn, duration, handler)
-	return r
+	return newOnInterval(cn, duration, handler)
 }
 
 // Signal creates a reactive signal and initializes it with the given value.
@@ -379,7 +379,7 @@ func (c *Context) dispose() {
 }
 
 // stopAllRoutines closes ctxDisposedChan, broadcasting to all listening
-// goroutines (OnIntervalRoutine, SSE loop) that this context is done.
+// goroutines (OnInterval, SSE loop) that this context is done.
 func (c *Context) stopAllRoutines() {
 	select {
 	case <-c.ctxDisposedChan:

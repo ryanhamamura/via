@@ -69,7 +69,7 @@ func main() {
 - **CSRF protection** — automatic token generation and validation on every action
 - **Rate limiting** — token-bucket algorithm, configurable globally and per-action
 - **Event handling** — `OnClick`, `OnChange`, `OnSubmit`, `OnInput`, `OnFocus`, `OnBlur`, `OnMouseEnter`, `OnMouseLeave`, `OnScroll`, `OnDblClick`, `OnKeyDown`, and `OnKeyDownMap` for multi-key bindings
-- **Timed routines** — `OnInterval` with start/stop/update controls, tied to context lifecycle
+- **Timed routines** — `OnInterval` auto-starts a ticker goroutine, returns a stop function, tied to context lifecycle
 - **Redirects** — `Redirect`, `ReplaceURL`, and format-string variants
 - **Plugin system** — `func(v *V)` hooks for integrating CSS/JS libraries
 - **Structured logging** — zerolog with configurable levels; console output in dev, JSON in production
