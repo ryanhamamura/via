@@ -1,10 +1,12 @@
 package via
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Rule defines a single validation check for a Field.
@@ -20,7 +22,7 @@ func Required(msg ...string) Rule {
 	}
 	return Rule{func(val string) error {
 		if strings.TrimSpace(val) == "" {
-			return fmt.Errorf("%s", m)
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -33,8 +35,8 @@ func MinLen(n int, msg ...string) Rule {
 		m = msg[0]
 	}
 	return Rule{func(val string) error {
-		if len(val) < n {
-			return fmt.Errorf("%s", m)
+		if utf8.RuneCountInString(val) < n {
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -47,8 +49,8 @@ func MaxLen(n int, msg ...string) Rule {
 		m = msg[0]
 	}
 	return Rule{func(val string) error {
-		if len(val) > n {
-			return fmt.Errorf("%s", m)
+		if utf8.RuneCountInString(val) > n {
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -63,10 +65,10 @@ func Min(n int, msg ...string) Rule {
 	return Rule{func(val string) error {
 		v, err := strconv.Atoi(val)
 		if err != nil {
-			return fmt.Errorf("%s", m)
+			return errors.New("Must be a valid number")
 		}
 		if v < n {
-			return fmt.Errorf("%s", m)
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -81,10 +83,10 @@ func Max(n int, msg ...string) Rule {
 	return Rule{func(val string) error {
 		v, err := strconv.Atoi(val)
 		if err != nil {
-			return fmt.Errorf("%s", m)
+			return errors.New("Must be a valid number")
 		}
 		if v > n {
-			return fmt.Errorf("%s", m)
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -99,7 +101,7 @@ func Pattern(re string, msg ...string) Rule {
 	compiled := regexp.MustCompile(re)
 	return Rule{func(val string) error {
 		if !compiled.MatchString(val) {
-			return fmt.Errorf("%s", m)
+			return errors.New(m)
 		}
 		return nil
 	}}
@@ -115,7 +117,7 @@ func Email(msg ...string) Rule {
 	}
 	return Rule{func(val string) error {
 		if !emailRegexp.MatchString(val) {
-			return fmt.Errorf("%s", m)
+			return errors.New(m)
 		}
 		return nil
 	}}

@@ -96,27 +96,22 @@ func TestFieldReset(t *testing.T) {
 
 func TestValidateAll(t *testing.T) {
 	v := New()
-	var username, email *Field
 	v.Page("/", func(c *Context) {
-		username = c.Field("", Required(), MinLen(3))
-		email = c.Field("", Required(), Email())
+		c.Field("", Required(), MinLen(3))
+		c.Field("", Required(), Email())
 		c.View(func() h.H { return h.Div() })
+
+		// both empty → both fail
+		assert.False(t, c.ValidateAll())
 	})
 
-	// both empty → both fail
-	assert.False(t, false) // sanity
-	ok := username.Validate() && email.Validate()
-	assert.False(t, ok)
-
-	// simulate ValidateAll via context
 	v2 := New()
-	var u2, e2 *Field
 	v2.Page("/", func(c *Context) {
-		u2 = c.Field("joe", Required(), MinLen(3))
-		e2 = c.Field("joe@x.com", Required(), Email())
+		c.Field("joe", Required(), MinLen(3))
+		c.Field("joe@x.com", Required(), Email())
 		c.View(func() h.H { return h.Div() })
 
-		assert.True(t, c.ValidateAll(u2, e2))
+		assert.True(t, c.ValidateAll())
 	})
 }
 
@@ -127,11 +122,27 @@ func TestValidateAllPartialFailure(t *testing.T) {
 		bad := c.Field("", Required())
 		c.View(func() h.H { return h.Div() })
 
-		// ValidateAll must run ALL fields even if first passes
-		ok := c.ValidateAll(good, bad)
+		ok := c.ValidateAll()
 		assert.False(t, ok)
 		assert.False(t, good.HasError())
 		assert.True(t, bad.HasError())
+	})
+}
+
+func TestValidateAllSelectiveArgs(t *testing.T) {
+	v := New()
+	v.Page("/", func(c *Context) {
+		a := c.Field("", Required())
+		b := c.Field("ok", Required())
+		cField := c.Field("", Required())
+		c.View(func() h.H { return h.Div() })
+
+		// only validate a and b — cField should be untouched
+		ok := c.ValidateAll(a, b)
+		assert.False(t, ok)
+		assert.True(t, a.HasError())
+		assert.False(t, b.HasError())
+		assert.False(t, cField.HasError(), "unselected field should not be validated")
 	})
 }
 
@@ -146,10 +157,27 @@ func TestResetFields(t *testing.T) {
 		b.SetValue("changed-b")
 		a.AddError("err")
 
-		c.ResetFields(a, b)
+		c.ResetFields()
 		assert.Equal(t, "a", a.String())
 		assert.Equal(t, "b", b.String())
 		assert.False(t, a.HasError())
+	})
+}
+
+func TestResetFieldsSelectiveArgs(t *testing.T) {
+	v := New()
+	v.Page("/", func(c *Context) {
+		a := c.Field("a")
+		b := c.Field("b")
+		c.View(func() h.H { return h.Div() })
+
+		a.SetValue("changed-a")
+		b.SetValue("changed-b")
+
+		// only reset a
+		c.ResetFields(a)
+		assert.Equal(t, "a", a.String())
+		assert.Equal(t, "changed-b", b.String(), "unselected field should not be reset")
 	})
 }
 

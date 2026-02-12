@@ -26,13 +26,13 @@ func main() {
 		email := c.Field("", via.Required(), via.Email())
 		age := c.Field("", via.Required(), via.Min(13), via.Max(120))
 		// Optional field — only validated when non-empty
-		website := c.Field("", via.Custom(func(val string) error { return nil }), via.Pattern(`^$|^https?://\S+$`, "Must be a valid URL"))
+		website := c.Field("", via.Pattern(`^$|^https?://\S+$`, "Must be a valid URL"))
 
 		var success string
 
 		signup := c.Action(func() {
 			success = ""
-			if !c.ValidateAll(username, email, age, website) {
+			if !c.ValidateAll() {
 				c.Sync()
 				return
 			}
@@ -43,13 +43,13 @@ func main() {
 				return
 			}
 			success = "Account created for " + username.String() + "!"
-			c.ResetFields(username, email, age, website)
+			c.ResetFields()
 			c.Sync()
 		})
 
 		reset := c.Action(func() {
 			success = ""
-			c.ResetFields(username, email, age, website)
+			c.ResetFields()
 			c.Sync()
 		})
 

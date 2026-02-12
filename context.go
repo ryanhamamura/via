@@ -32,6 +32,7 @@ type Context struct {
 	mu                sync.RWMutex
 	ctxDisposedChan   chan struct{}
 	reqCtx            context.Context
+	fields            []*Field
 	subscriptions     []Subscription
 	subsMu            sync.Mutex
 	disposeOnce       sync.Once
@@ -482,16 +483,28 @@ func (c *Context) unsubscribeAll() {
 
 // Field creates a signal with validation rules attached.
 // The initial value seeds both the signal and the reset target.
+// The field is tracked on the context so ValidateAll/ResetFields
+// can operate on all fields by default.
 func (c *Context) Field(initial any, rules ...Rule) *Field {
-	return &Field{
+	f := &Field{
 		signal:     c.Signal(initial),
 		rules:      rules,
 		initialVal: initial,
 	}
+	target := c
+	if c.isComponent() {
+		target = c.parentPageCtx
+	}
+	target.fields = append(target.fields, f)
+	return f
 }
 
-// ValidateAll runs Validate on every field, returning true only if all pass.
+// ValidateAll runs Validate on each field, returning true only if all pass.
+// With no arguments it validates every field tracked on this context.
 func (c *Context) ValidateAll(fields ...*Field) bool {
+	if len(fields) == 0 {
+		fields = c.fields
+	}
 	ok := true
 	for _, f := range fields {
 		if !f.Validate() {
@@ -501,8 +514,12 @@ func (c *Context) ValidateAll(fields ...*Field) bool {
 	return ok
 }
 
-// ResetFields resets every field to its initial value and clears errors.
+// ResetFields resets each field to its initial value and clears errors.
+// With no arguments it resets every field tracked on this context.
 func (c *Context) ResetFields(fields ...*Field) {
+	if len(fields) == 0 {
+		fields = c.fields
+	}
 	for _, f := range fields {
 		f.Reset()
 	}
