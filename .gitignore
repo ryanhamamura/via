@@ -48,6 +48,7 @@ internal/examples/plugins/plugins
 internal/examples/realtimechart/realtimechart
 internal/examples/shakespeare/shakespeare
 internal/examples/nats-chatroom/nats-chatroom
+/nats-chatroom
 
 # NATS data directory
 data/
