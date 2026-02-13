@@ -419,6 +419,11 @@ func (v *V) HTTPServeMux() *http.ServeMux {
 	return v.mux
 }
 
+// PubSub returns the configured PubSub backend, or nil if none is set.
+func (v *V) PubSub() PubSub {
+	return v.pubsub
+}
+
 // Static serves files from a filesystem directory at the given URL prefix.
 //
 // Example:
