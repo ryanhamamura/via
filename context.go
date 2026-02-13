@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/url"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +31,7 @@ type Context struct {
 	actionRegistry    map[string]actionEntry
 	signals           *sync.Map
 	mu                sync.RWMutex
+	navMu             sync.Mutex
 	ctxDisposedChan   chan struct{}
 	pageStopChan      chan struct{}
 	reqCtx            context.Context
@@ -272,15 +273,22 @@ func (c *Context) sendPatch(p patch) {
 // Sync pushes the current view state and signal changes to the browser immediately
 // over the live SSE event stream.
 func (c *Context) Sync() {
+	c.syncView(false)
+}
+
+func (c *Context) syncView(viewTransition bool) {
 	elemsPatch := new(bytes.Buffer)
 	if err := c.view().Render(elemsPatch); err != nil {
 		c.app.logErr(c, "sync view failed: %v", err)
 		return
 	}
-	c.sendPatch(patch{patchTypeElements, elemsPatch.String()})
+	typ := patchType(patchTypeElements)
+	if viewTransition {
+		typ = patchTypeElementsWithVT
+	}
+	c.sendPatch(patch{typ, elemsPatch.String()})
 
 	updatedSigs := c.prepareSignalsForPatch()
-
 	if len(updatedSigs) != 0 {
 		outgoingSigs, _ := json.Marshal(updatedSigs)
 		c.sendPatch(patch{patchTypeSignals, string(outgoingSigs)})
@@ -396,6 +404,9 @@ func (c *Context) resetPageState() {
 // view over the existing SSE connection with a view transition animation.
 // If popstate is true, replaceState is used instead of pushState.
 func (c *Context) Navigate(path string, popstate bool) {
+	c.navMu.Lock()
+	defer c.navMu.Unlock()
+
 	route, initFn, params := c.app.matchRoute(path)
 	if initFn == nil {
 		c.Redirect(path)
@@ -405,29 +416,12 @@ func (c *Context) Navigate(path string, popstate bool) {
 	c.route = route
 	c.injectRouteParams(params)
 	initFn(c)
-	c.syncWithViewTransition()
-	escaped := url.PathEscape(path)
+	c.syncView(true)
+	safe := strings.NewReplacer(`\`, `\\`, `'`, `\'`).Replace(path)
 	if popstate {
-		c.ExecScript(fmt.Sprintf("history.replaceState({},'',decodeURIComponent('%s'))", escaped))
+		c.ExecScript(fmt.Sprintf("history.replaceState({},'','%s')", safe))
 	} else {
-		c.ExecScript(fmt.Sprintf("history.pushState({},'',decodeURIComponent('%s'))", escaped))
-	}
-}
-
-// syncWithViewTransition renders the view and sends it as a PatchElements
-// with the view transition flag, plus any changed signals.
-func (c *Context) syncWithViewTransition() {
-	elemsPatch := new(bytes.Buffer)
-	if err := c.view().Render(elemsPatch); err != nil {
-		c.app.logErr(c, "sync view failed: %v", err)
-		return
-	}
-	c.sendPatch(patch{patchTypeElementsWithVT, elemsPatch.String()})
-
-	updatedSigs := c.prepareSignalsForPatch()
-	if len(updatedSigs) != 0 {
-		outgoingSigs, _ := json.Marshal(updatedSigs)
-		c.sendPatch(patch{patchTypeSignals, string(outgoingSigs)})
+		c.ExecScript(fmt.Sprintf("history.pushState({},'','%s')", safe))
 	}
 }
 

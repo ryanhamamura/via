@@ -38,15 +38,14 @@
       var url = new URL(href, window.location.origin);
       if (url.origin !== window.location.origin) return;
       e.preventDefault();
-      navigate(url.pathname + url.search);
+      navigate(url.pathname + url.search + url.hash);
     } catch(_) {}
   });
 
   var ready = false;
   window.addEventListener('popstate', function() {
-    if (!ready) { ready = true; return; }
-    navigate(window.location.pathname + window.location.search, true);
+    if (!ready) return;
+    navigate(window.location.pathname + window.location.search + window.location.hash, true);
   });
-  // Mark as ready after initial load completes
   setTimeout(function() { ready = true; }, 0);
 })();
