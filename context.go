@@ -39,8 +39,9 @@ type Context struct {
 	subscriptions     []Subscription
 	subsMu            sync.Mutex
 	disposeOnce       sync.Once
-	createdAt         time.Time
-	sseConnected      atomic.Bool
+	createdAt           time.Time
+	sseConnected        atomic.Bool
+	sseDisconnectedAt   atomic.Pointer[time.Time]
 }
 
 // View defines the UI rendered by this context.
