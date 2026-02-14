@@ -42,6 +42,7 @@ type Context struct {
 	createdAt           time.Time
 	sseConnected        atomic.Bool
 	sseDisconnectedAt   atomic.Pointer[time.Time]
+	suspended           atomic.Bool
 }
 
 // View defines the UI rendered by this context.
@@ -398,6 +399,13 @@ func (c *Context) resetPageState() {
 	c.fields = nil
 	c.pageStopChan = make(chan struct{})
 	c.mu.Unlock()
+}
+
+// suspend frees page-scoped resources while keeping the context shell alive
+// in the registry for seamless re-init on reconnect.
+func (c *Context) suspend() {
+	c.resetPageState()
+	c.suspended.Store(true)
 }
 
 // Navigate performs an SPA navigation to the given path. It resets page state,

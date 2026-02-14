@@ -303,10 +303,61 @@ func TestReaperCleansOrphanedContexts(t *testing.T) {
 	_, err := v.getCtx("orphan-1")
 	assert.NoError(t, err)
 
-	v.reapOrphanedContexts(10 * time.Second)
+	v.reapOrphanedContexts(5*time.Second, 10*time.Second)
 
 	_, err = v.getCtx("orphan-1")
 	assert.Error(t, err, "orphaned context should have been reaped")
+}
+
+func TestReaperSuspendsContext(t *testing.T) {
+	v := New()
+	c := newContext("suspend-1", "/", v)
+	dc := time.Now().Add(-20 * time.Minute)
+	c.sseDisconnectedAt.Store(&dc)
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	got, err := v.getCtx("suspend-1")
+	assert.NoError(t, err, "suspended context should still be in registry")
+	assert.True(t, got.suspended.Load(), "context should be marked suspended")
+}
+
+func TestReaperReapsAfterTTL(t *testing.T) {
+	v := New()
+	c := newContext("reap-1", "/", v)
+	dc := time.Now().Add(-2 * time.Hour)
+	c.sseDisconnectedAt.Store(&dc)
+	c.suspended.Store(true)
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	_, err := v.getCtx("reap-1")
+	assert.Error(t, err, "context past TTL should have been reaped")
+}
+
+func TestReaperIgnoresAlreadySuspended(t *testing.T) {
+	v := New()
+	c := newContext("already-sus-1", "/", v)
+	dc := time.Now().Add(-20 * time.Minute)
+	c.sseDisconnectedAt.Store(&dc)
+	c.suspended.Store(true)
+	// give it a fresh pageStopChan so we can verify it's not re-closed
+	c.pageStopChan = make(chan struct{})
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	got, err := v.getCtx("already-sus-1")
+	assert.NoError(t, err, "already-suspended context within TTL should survive")
+	assert.True(t, got.suspended.Load())
+	// pageStopChan should still be open (not re-suspended)
+	select {
+	case <-got.pageStopChan:
+		t.Fatal("pageStopChan was closed — context was re-suspended")
+	default:
+	}
 }
 
 func TestReaperIgnoresConnectedContexts(t *testing.T) {
@@ -316,7 +367,7 @@ func TestReaperIgnoresConnectedContexts(t *testing.T) {
 	c.sseConnected.Store(true)
 	v.registerCtx(c)
 
-	v.reapOrphanedContexts(10 * time.Second)
+	v.reapOrphanedContexts(5*time.Second, 10*time.Second)
 
 	_, err := v.getCtx("connected-1")
 	assert.NoError(t, err, "connected context should survive reaping")

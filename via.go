@@ -139,6 +139,9 @@ func (v *V) Config(cfg Options) {
 		v.defaultNATS = nil
 		v.pubsub = cfg.PubSub
 	}
+	if cfg.ContextSuspendAfter != 0 {
+		v.cfg.ContextSuspendAfter = cfg.ContextSuspendAfter
+	}
 	if cfg.ContextTTL != 0 {
 		v.cfg.ContextTTL = cfg.ContextTTL
 	}
@@ -292,9 +295,16 @@ func (v *V) startReaper() {
 		return
 	}
 	if ttl == 0 {
-		ttl = 30 * time.Second
+		ttl = time.Hour
 	}
-	interval := ttl / 3
+	suspendAfter := v.cfg.ContextSuspendAfter
+	if suspendAfter == 0 {
+		suspendAfter = 15 * time.Minute
+	}
+	if suspendAfter > ttl {
+		suspendAfter = ttl
+	}
+	interval := suspendAfter / 3
 	if interval < 5*time.Second {
 		interval = 5 * time.Second
 	}
@@ -307,35 +317,39 @@ func (v *V) startReaper() {
 			case <-v.reaperStop:
 				return
 			case <-ticker.C:
-				v.reapOrphanedContexts(ttl)
+				v.reapOrphanedContexts(suspendAfter, ttl)
 			}
 		}
 	}()
 }
 
-func (v *V) reapOrphanedContexts(ttl time.Duration) {
+func (v *V) reapOrphanedContexts(suspendAfter, ttl time.Duration) {
 	now := time.Now()
 	v.contextRegistryMutex.RLock()
-	var orphans []*Context
+	var toSuspend, toReap []*Context
 	for _, c := range v.contextRegistry {
 		if c.sseConnected.Load() {
 			continue
 		}
+		var disconnectedFor time.Duration
 		if dc := c.sseDisconnectedAt.Load(); dc != nil {
-			// SSE was connected then dropped — reap if gone too long
-			if now.Sub(*dc) > ttl {
-				orphans = append(orphans, c)
-			}
+			disconnectedFor = now.Sub(*dc)
 		} else {
-			// SSE never connected — reap based on creation time
-			if now.Sub(c.createdAt) > ttl {
-				orphans = append(orphans, c)
-			}
+			disconnectedFor = now.Sub(c.createdAt)
+		}
+		if disconnectedFor > ttl {
+			toReap = append(toReap, c)
+		} else if disconnectedFor > suspendAfter && !c.suspended.Load() {
+			toSuspend = append(toSuspend, c)
 		}
 	}
 	v.contextRegistryMutex.RUnlock()
 
-	for _, c := range orphans {
+	for _, c := range toSuspend {
+		v.logInfo(c, "suspending context (no SSE connection after %s)", suspendAfter)
+		c.suspend()
+	}
+	for _, c := range toReap {
 		v.logInfo(c, "reaping orphaned context (no SSE connection after %s)", ttl)
 		v.cleanupCtx(c)
 	}
@@ -625,7 +639,9 @@ func New() *V {
 		}
 		c, err := v.getCtx(cID)
 		if err != nil {
-			v.logErr(nil, "sse stream failed to start: %v", err)
+			v.logInfo(nil, "context expired, reloading client: %s", cID)
+			sse := datastar.NewSSE(w, r)
+			sse.ExecuteScript("window.location.reload()")
 			return
 		}
 		c.reqCtx = r.Context()
@@ -649,6 +665,16 @@ func New() *V {
 		c.sseConnected.Store(true)
 		c.sseDisconnectedAt.Store(nil)
 		v.logDebug(c, "SSE connection established")
+
+		if c.suspended.Load() {
+			c.navMu.Lock()
+			c.suspended.Store(false)
+			if initFn := v.pageRegistry[c.route]; initFn != nil {
+				v.logInfo(c, "resuming suspended context")
+				initFn(c)
+			}
+			c.navMu.Unlock()
+		}
 
 		go c.Sync()
 

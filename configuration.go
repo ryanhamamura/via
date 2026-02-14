@@ -57,9 +57,14 @@ type Options struct {
 	// embedded NATS backend, or supply any PubSub implementation.
 	PubSub PubSub
 
+	// ContextSuspendAfter is the time a context may be disconnected before
+	// the reaper suspends it (frees page resources but keeps the context
+	// shell for seamless re-init on reconnect). Default: 15m.
+	ContextSuspendAfter time.Duration
+
 	// ContextTTL is the maximum time a context may exist without an SSE
-	// connection before the background reaper disposes it.
-	// Default: 30s. Negative value disables the reaper.
+	// connection before the background reaper fully disposes it.
+	// Default: 1h. Negative value disables the reaper.
 	ContextTTL time.Duration
 
 	// ActionRateLimit configures the default token-bucket rate limiter for
