@@ -3,6 +3,7 @@ package via
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/ryanhamamura/via/h"
 )
@@ -23,6 +24,8 @@ type triggerOpts struct {
 	value          string
 	window         bool
 	preventDefault bool
+	debounce       time.Duration
+	throttle       time.Duration
 }
 
 type withSignalOpt struct {
@@ -56,6 +59,41 @@ func (o withPreventDefaultOpt) apply(opts *triggerOpts) {
 // WithPreventDefault calls evt.preventDefault() for matched keys.
 func WithPreventDefault() ActionTriggerOption {
 	return withPreventDefaultOpt{}
+}
+
+type withDebounceOpt struct{ d time.Duration }
+
+func (o withDebounceOpt) apply(opts *triggerOpts) { opts.debounce = o.d }
+
+// WithDebounce adds a debounce modifier to the event trigger.
+func WithDebounce(d time.Duration) ActionTriggerOption { return withDebounceOpt{d} }
+
+type withThrottleOpt struct{ d time.Duration }
+
+func (o withThrottleOpt) apply(opts *triggerOpts) { opts.throttle = o.d }
+
+// WithThrottle adds a throttle modifier to the event trigger.
+func WithThrottle(d time.Duration) ActionTriggerOption { return withThrottleOpt{d} }
+
+// formatDuration renders a duration as e.g. "200ms" for Datastar modifiers.
+func formatDuration(d time.Duration) string {
+	return fmt.Sprintf("%dms", d.Milliseconds())
+}
+
+// buildAttrKey constructs a Datastar attribute key with modifiers.
+// Order: event → debounce/throttle → window.
+func buildAttrKey(event string, opts *triggerOpts) string {
+	key := "on:" + event
+	if opts.debounce > 0 {
+		key += "__debounce." + formatDuration(opts.debounce)
+	}
+	if opts.throttle > 0 {
+		key += "__throttle." + formatDuration(opts.throttle)
+	}
+	if opts.window {
+		key += "__window"
+	}
+	return key
 }
 
 // WithSignal sets a signal value before triggering the action.
@@ -97,62 +135,62 @@ func actionURL(id string) string {
 // to element nodes in a view.
 func (a *actionTrigger) OnClick(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:click", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("click", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnChange returns a via.h DOM attribute that triggers on input change. It can be added
 // to element nodes in a view.
 func (a *actionTrigger) OnChange(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:change__debounce.200ms", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("change", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnSubmit returns a via.h DOM attribute that triggers on form submit.
 func (a *actionTrigger) OnSubmit(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:submit", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("submit", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnInput returns a via.h DOM attribute that triggers on input (without debounce).
 func (a *actionTrigger) OnInput(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:input", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("input", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnFocus returns a via.h DOM attribute that triggers when the element gains focus.
 func (a *actionTrigger) OnFocus(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:focus", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("focus", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnBlur returns a via.h DOM attribute that triggers when the element loses focus.
 func (a *actionTrigger) OnBlur(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:blur", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("blur", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnMouseEnter returns a via.h DOM attribute that triggers when the mouse enters the element.
 func (a *actionTrigger) OnMouseEnter(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:mouseenter", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("mouseenter", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnMouseLeave returns a via.h DOM attribute that triggers when the mouse leaves the element.
 func (a *actionTrigger) OnMouseLeave(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:mouseleave", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("mouseleave", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnScroll returns a via.h DOM attribute that triggers on scroll.
 func (a *actionTrigger) OnScroll(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:scroll", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("scroll", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnDblClick returns a via.h DOM attribute that triggers on double click.
 func (a *actionTrigger) OnDblClick(options ...ActionTriggerOption) h.H {
 	opts := applyOptions(options...)
-	return h.Data("on:dblclick", buildOnExpr(actionURL(a.id), &opts))
+	return h.Data(buildAttrKey("dblclick", &opts), buildOnExpr(actionURL(a.id), &opts))
 }
 
 // OnKeyDown returns a via.h DOM attribute that triggers when a key is pressed.
@@ -164,11 +202,7 @@ func (a *actionTrigger) OnKeyDown(key string, options ...ActionTriggerOption) h.
 	if key != "" {
 		condition = fmt.Sprintf("evt.key==='%s' &&", key)
 	}
-	attrName := "on:keydown"
-	if opts.window {
-		attrName = "on:keydown__window"
-	}
-	return h.Data(attrName, fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
+	return h.Data(buildAttrKey("keydown", &opts), fmt.Sprintf("%s%s", condition, buildOnExpr(actionURL(a.id), &opts)))
 }
 
 // KeyBinding pairs a key with an action and per-binding options.

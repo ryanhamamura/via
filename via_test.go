@@ -127,7 +127,7 @@ func TestAction(t *testing.T) {
 	v.mux.ServeHTTP(w, req)
 	body := w.Body.String()
 	assert.Contains(t, body, "data-on:click")
-	assert.Contains(t, body, "data-on:change__debounce.200ms")
+	assert.Contains(t, body, "data-on:change")
 	assert.Contains(t, body, "data-on:keydown")
 	assert.Contains(t, body, "/_action/")
 }
@@ -279,6 +279,112 @@ func TestOnKeyDownMap(t *testing.T) {
 		result := OnKeyDownMap()
 		assert.Nil(t, result)
 	})
+}
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{200 * time.Millisecond, "200ms"},
+		{1 * time.Second, "1000ms"},
+		{50 * time.Millisecond, "50ms"},
+	}
+	for _, tt := range tests {
+		assert.Equal(t, tt.want, formatDuration(tt.d))
+	}
+}
+
+func TestBuildAttrKey(t *testing.T) {
+	tests := []struct {
+		name  string
+		event string
+		opts  triggerOpts
+		want  string
+	}{
+		{"bare event", "click", triggerOpts{}, "on:click"},
+		{"debounce only", "change", triggerOpts{debounce: 200 * time.Millisecond}, "on:change__debounce.200ms"},
+		{"throttle only", "scroll", triggerOpts{throttle: 100 * time.Millisecond}, "on:scroll__throttle.100ms"},
+		{"window only", "keydown", triggerOpts{window: true}, "on:keydown__window"},
+		{"debounce + window", "input", triggerOpts{debounce: 300 * time.Millisecond, window: true}, "on:input__debounce.300ms__window"},
+		{"throttle + window", "scroll", triggerOpts{throttle: 500 * time.Millisecond, window: true}, "on:scroll__throttle.500ms__window"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, buildAttrKey(tt.event, &tt.opts))
+		})
+	}
+}
+
+func TestWithDebounce(t *testing.T) {
+	var trigger *actionTrigger
+	v := New()
+	v.Page("/", func(c *Context) {
+		trigger = c.Action(func() {})
+		c.View(func() h.H {
+			return h.Button(trigger.OnClick(WithDebounce(300 * time.Millisecond)))
+		})
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	assert.Contains(t, body, "data-on:click__debounce.300ms")
+	assert.Contains(t, body, "/_action/"+trigger.id)
+}
+
+func TestWithThrottle(t *testing.T) {
+	var trigger *actionTrigger
+	v := New()
+	v.Page("/", func(c *Context) {
+		trigger = c.Action(func() {})
+		c.View(func() h.H {
+			return h.Div(trigger.OnScroll(WithThrottle(100 * time.Millisecond)))
+		})
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	assert.Contains(t, body, "data-on:scroll__throttle.100ms")
+	assert.Contains(t, body, "/_action/"+trigger.id)
+}
+
+func TestWithDebounceOnChange(t *testing.T) {
+	var trigger *actionTrigger
+	v := New()
+	v.Page("/", func(c *Context) {
+		trigger = c.Action(func() {})
+		c.View(func() h.H {
+			return h.Input(trigger.OnChange(WithDebounce(200 * time.Millisecond)))
+		})
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	assert.Contains(t, body, "data-on:change__debounce.200ms")
+	assert.Contains(t, body, "/_action/"+trigger.id)
+}
+
+func TestDebounceWithWindow(t *testing.T) {
+	var trigger *actionTrigger
+	v := New()
+	v.Page("/", func(c *Context) {
+		trigger = c.Action(func() {})
+		c.View(func() h.H {
+			return h.Div(trigger.OnKeyDown("Enter", WithDebounce(150*time.Millisecond), WithWindow()))
+		})
+	})
+
+	req := httptest.NewRequest("GET", "/", nil)
+	w := httptest.NewRecorder()
+	v.mux.ServeHTTP(w, req)
+	body := w.Body.String()
+	assert.Contains(t, body, "data-on:keydown__debounce.150ms__window")
 }
 
 func TestConfig(t *testing.T) {
