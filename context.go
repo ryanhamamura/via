@@ -207,6 +207,40 @@ func (c *Context) Signal(v any) *signal {
 
 }
 
+// Computed creates a read-only signal whose value is derived from the given function.
+// The function is called on every read (String/Int/Bool) for fresh values,
+// and during sync to detect changes for browser patches.
+//
+// Computed signals cannot be bound to inputs or set manually.
+//
+// Example:
+//
+//	full := c.Computed(func() string {
+//	    return first.String() + " " + last.String()
+//	})
+//	c.View(func() h.H {
+//	    return h.Span(full.Text())
+//	})
+func (c *Context) Computed(fn func() string) *computedSignal {
+	sigID := genRandID()
+	initial := fn()
+	cs := &computedSignal{
+		id:      sigID,
+		compute: fn,
+		lastVal: initial,
+		changed: true,
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.isComponent() {
+		c.parentPageCtx.signals.Store(sigID, cs)
+	} else {
+		c.signals.Store(sigID, cs)
+	}
+	return cs
+}
+
 func (c *Context) injectSignals(sigs map[string]any) {
 	if sigs == nil {
 		c.app.logErr(c, "signal injection failed: nil signals")
@@ -248,13 +282,20 @@ func (c *Context) prepareSignalsForPatch() map[string]any {
 	defer c.mu.RUnlock()
 	updatedSigs := make(map[string]any)
 	c.signals.Range(func(sigID, value any) bool {
-		if sig, ok := value.(*signal); ok {
+		switch sig := value.(type) {
+		case *signal:
 			if sig.err != nil {
 				c.app.logWarn(c, "signal '%s' is out of sync: %v", sig.id, sig.err)
 				return true
 			}
 			if sig.changed {
 				updatedSigs[sigID.(string)] = fmt.Sprintf("%v", sig.val)
+			}
+		case *computedSignal:
+			sig.recompute()
+			if sig.changed {
+				updatedSigs[sigID.(string)] = sig.patchValue()
+				sig.changed = false
 			}
 		}
 		return true
