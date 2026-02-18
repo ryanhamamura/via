@@ -10,9 +10,24 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestPubSub_RoundTrip(t *testing.T) {
+// setupNATSTest creates a *V with an embedded NATS server.
+// Skips the test if NATS fails to start (e.g. port conflict in CI).
+func setupNATSTest(t *testing.T) *V {
+	t.Helper()
 	v := New()
-	defer v.Shutdown()
+	dn, err := getSharedNATS()
+	if err != nil {
+		v.Shutdown()
+		t.Skipf("embedded NATS unavailable: %v", err)
+	}
+	v.defaultNATS = dn
+	v.pubsub = &natsRef{dn: dn}
+	t.Cleanup(v.Shutdown)
+	return v
+}
+
+func TestPubSub_RoundTrip(t *testing.T) {
+	v := setupNATSTest(t)
 
 	var received []byte
 	done := make(chan struct{})
@@ -38,8 +53,7 @@ func TestPubSub_RoundTrip(t *testing.T) {
 }
 
 func TestPubSub_MultipleSubscribers(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	var mu sync.Mutex
 	var results []string
@@ -84,8 +98,7 @@ func TestPubSub_MultipleSubscribers(t *testing.T) {
 }
 
 func TestPubSub_SubscriptionCleanupOnDispose(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	c := newContext("cleanup-ctx", "/", v)
 	c.View(func() h.H { return h.Div() })
@@ -100,8 +113,7 @@ func TestPubSub_SubscriptionCleanupOnDispose(t *testing.T) {
 }
 
 func TestPubSub_ManualUnsubscribe(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	c := newContext("unsub-ctx", "/", v)
 	c.View(func() h.H { return h.Div() })
@@ -120,8 +132,7 @@ func TestPubSub_ManualUnsubscribe(t *testing.T) {
 }
 
 func TestPubSub_NoOpDuringPanicCheck(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	// Panic-check context has id=""
 	c := newContext("", "/", v)

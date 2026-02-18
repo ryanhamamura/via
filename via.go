@@ -358,6 +358,16 @@ func (v *V) reapOrphanedContexts(suspendAfter, ttl time.Duration) {
 // Start starts the Via HTTP server and blocks until a SIGINT or SIGTERM
 // signal is received, then performs a graceful shutdown.
 func (v *V) Start() {
+	if v.pubsub == nil {
+		dn, err := getSharedNATS()
+		if err != nil {
+			v.logWarn(nil, "embedded NATS unavailable: %v", err)
+		} else {
+			v.defaultNATS = dn
+			v.pubsub = &natsRef{dn: dn}
+		}
+	}
+
 	handler := http.Handler(v.mux)
 	if v.sessionManager != nil {
 		handler = v.sessionManager.LoadAndSave(v.mux)
@@ -832,14 +842,6 @@ func New() *V {
 		v.logDebug(c, "session close event triggered")
 		v.cleanupCtx(c)
 	})
-
-	dn, err := getSharedNATS()
-	if err != nil {
-		v.logWarn(nil, "embedded NATS unavailable: %v", err)
-	} else {
-		v.defaultNATS = dn
-		v.pubsub = &natsRef{dn: dn}
-	}
 
 	return v
 }

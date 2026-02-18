@@ -10,8 +10,7 @@ import (
 )
 
 func TestPublishSubscribe_RoundTrip(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	type event struct {
 		Name  string `json:"name"`
@@ -43,8 +42,7 @@ func TestPublishSubscribe_RoundTrip(t *testing.T) {
 }
 
 func TestSubscribe_SkipsBadJSON(t *testing.T) {
-	v := New()
-	defer v.Shutdown()
+	v := setupNATSTest(t)
 
 	type msg struct {
 		Text string `json:"text"`

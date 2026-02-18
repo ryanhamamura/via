@@ -56,7 +56,19 @@ func startDefaultNATS() (dn *defaultNATS, err error) {
 		os.RemoveAll(dataDir)
 		return nil, fmt.Errorf("start embedded nats: %w", err)
 	}
-	ns.WaitForServer()
+	ready := make(chan struct{})
+	go func() {
+		ns.WaitForServer()
+		close(ready)
+	}()
+	select {
+	case <-ready:
+	case <-time.After(10 * time.Second):
+		ns.Close()
+		cancel()
+		os.RemoveAll(dataDir)
+		return nil, fmt.Errorf("embedded nats server did not start within 10s")
+	}
 
 	nc, err := ns.Client()
 	if err != nil {
