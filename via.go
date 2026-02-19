@@ -331,15 +331,18 @@ func (v *V) reapOrphanedContexts(suspendAfter, ttl time.Duration) {
 		if c.sseConnected.Load() {
 			continue
 		}
-		var disconnectedFor time.Duration
-		if dc := c.sseDisconnectedAt.Load(); dc != nil {
-			disconnectedFor = now.Sub(*dc)
-		} else {
-			disconnectedFor = now.Sub(c.createdAt)
+		// Use the most recent liveness signal
+		lastAlive := c.createdAt
+		if dc := c.sseDisconnectedAt.Load(); dc != nil && dc.After(lastAlive) {
+			lastAlive = *dc
 		}
-		if disconnectedFor > ttl {
+		if seen := c.lastSeenAt.Load(); seen != nil && seen.After(lastAlive) {
+			lastAlive = *seen
+		}
+		silentFor := now.Sub(lastAlive)
+		if silentFor > ttl {
 			toReap = append(toReap, c)
-		} else if disconnectedFor > suspendAfter && !c.suspended.Load() {
+		} else if silentFor > suspendAfter && !c.suspended.Load() {
 			toSuspend = append(toSuspend, c)
 		}
 	}
@@ -655,6 +658,8 @@ func New() *V {
 			return
 		}
 		c.reqCtx = r.Context()
+		now := time.Now()
+		c.lastSeenAt.Store(&now)
 
 		sse := datastar.NewSSE(w, r, datastar.WithCompression(datastar.WithBrotli(datastar.WithBrotliLevel(5))))
 
@@ -688,17 +693,22 @@ func New() *V {
 
 		go c.Sync()
 
+		keepalive := time.NewTicker(30 * time.Second)
+		defer keepalive.Stop()
+
 		for {
 			select {
 			case <-sse.Context().Done():
 				v.logDebug(c, "SSE connection ended")
 				c.sseConnected.Store(false)
-				now := time.Now()
-				c.sseDisconnectedAt.Store(&now)
+				dcNow := time.Now()
+				c.sseDisconnectedAt.Store(&dcNow)
 				return
 			case <-c.ctxDisposedChan:
 				v.logDebug(c, "context disposed, closing SSE")
 				return
+			case <-keepalive.C:
+				sse.PatchSignals([]byte("{}"))
 			case patch := <-c.patchChan:
 				switch patch.typ {
 				case patchTypeElements:

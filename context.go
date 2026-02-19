@@ -42,6 +42,7 @@ type Context struct {
 	createdAt           time.Time
 	sseConnected        atomic.Bool
 	sseDisconnectedAt   atomic.Pointer[time.Time]
+	lastSeenAt          atomic.Pointer[time.Time]
 	suspended           atomic.Bool
 }
 

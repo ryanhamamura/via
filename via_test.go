@@ -418,6 +418,7 @@ func TestReaperCleansOrphanedContexts(t *testing.T) {
 func TestReaperSuspendsContext(t *testing.T) {
 	v := New()
 	c := newContext("suspend-1", "/", v)
+	c.createdAt = time.Now().Add(-30 * time.Minute)
 	dc := time.Now().Add(-20 * time.Minute)
 	c.sseDisconnectedAt.Store(&dc)
 	v.registerCtx(c)
@@ -432,6 +433,7 @@ func TestReaperSuspendsContext(t *testing.T) {
 func TestReaperReapsAfterTTL(t *testing.T) {
 	v := New()
 	c := newContext("reap-1", "/", v)
+	c.createdAt = time.Now().Add(-3 * time.Hour)
 	dc := time.Now().Add(-2 * time.Hour)
 	c.sseDisconnectedAt.Store(&dc)
 	c.suspended.Store(true)
@@ -446,6 +448,7 @@ func TestReaperReapsAfterTTL(t *testing.T) {
 func TestReaperIgnoresAlreadySuspended(t *testing.T) {
 	v := New()
 	c := newContext("already-sus-1", "/", v)
+	c.createdAt = time.Now().Add(-30 * time.Minute)
 	dc := time.Now().Add(-20 * time.Minute)
 	c.sseDisconnectedAt.Store(&dc)
 	c.suspended.Store(true)
@@ -498,6 +501,74 @@ func TestCleanupCtxIdempotent(t *testing.T) {
 
 	_, err := v.getCtx("idempotent-1")
 	assert.Error(t, err, "context should be removed after cleanup")
+}
+
+func TestReaperRespectsLastSeenAt(t *testing.T) {
+	v := New()
+	c := newContext("seen-1", "/", v)
+	c.createdAt = time.Now().Add(-30 * time.Minute)
+	// Disconnected 20 min ago, but client retried (lastSeenAt) 2 min ago
+	dc := time.Now().Add(-20 * time.Minute)
+	c.sseDisconnectedAt.Store(&dc)
+	seen := time.Now().Add(-2 * time.Minute)
+	c.lastSeenAt.Store(&seen)
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	_, err := v.getCtx("seen-1")
+	assert.NoError(t, err, "context with recent lastSeenAt should survive suspend threshold")
+	assert.False(t, c.suspended.Load(), "context should not be suspended")
+}
+
+func TestReaperFallsBackWithoutLastSeenAt(t *testing.T) {
+	v := New()
+	c := newContext("noseen-1", "/", v)
+	c.createdAt = time.Now().Add(-30 * time.Minute)
+	dc := time.Now().Add(-20 * time.Minute)
+	c.sseDisconnectedAt.Store(&dc)
+	// no lastSeenAt set — should fall back to sseDisconnectedAt
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	got, err := v.getCtx("noseen-1")
+	assert.NoError(t, err, "context should still be in registry (suspended, not reaped)")
+	assert.True(t, got.suspended.Load(), "context should be suspended using sseDisconnectedAt fallback")
+}
+
+func TestReaperReapsWithStaleLastSeenAt(t *testing.T) {
+	v := New()
+	c := newContext("stale-seen-1", "/", v)
+	c.createdAt = time.Now().Add(-3 * time.Hour)
+	dc := time.Now().Add(-2 * time.Hour)
+	c.sseDisconnectedAt.Store(&dc)
+	// lastSeenAt is also old — beyond TTL
+	seen := time.Now().Add(-90 * time.Minute)
+	c.lastSeenAt.Store(&seen)
+	c.suspended.Store(true)
+	v.registerCtx(c)
+
+	v.reapOrphanedContexts(15*time.Minute, time.Hour)
+
+	_, err := v.getCtx("stale-seen-1")
+	assert.Error(t, err, "context with stale lastSeenAt beyond TTL should be reaped")
+}
+
+func TestLastSeenAtUpdatedOnSSEConnect(t *testing.T) {
+	v := New()
+	c := newContext("seen-sse-1", "/", v)
+	v.registerCtx(c)
+
+	assert.Nil(t, c.lastSeenAt.Load(), "lastSeenAt should be nil before SSE connect")
+
+	// Simulate what the SSE handler does after getCtx
+	now := time.Now()
+	c.lastSeenAt.Store(&now)
+
+	got := c.lastSeenAt.Load()
+	assert.NotNil(t, got, "lastSeenAt should be set after SSE connect")
+	assert.WithinDuration(t, now, *got, time.Second)
 }
 
 func TestDevModeRemovePersistedFix(t *testing.T) {
