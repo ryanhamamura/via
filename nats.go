@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/delaneyj/toolbelt/embeddednats"
+	natsserver "github.com/nats-io/nats-server/v2/server"
 	"github.com/nats-io/nats.go"
 )
 
@@ -50,7 +51,14 @@ func startDefaultNATS() (dn *defaultNATS, err error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ns, err := embeddednats.New(ctx, embeddednats.WithDirectory(dataDir))
+	ns, err := embeddednats.New(ctx,
+		embeddednats.WithDirectory(dataDir),
+		embeddednats.WithNATSServerOptions(&natsserver.Options{
+			JetStream: true,
+			StoreDir:  dataDir,
+			Port:      -1,
+		}),
+	)
 	if err != nil {
 		cancel()
 		os.RemoveAll(dataDir)
