@@ -21,17 +21,13 @@ func main() {
 		DocumentTitle: "NATS Chat",
 		LogLevel:      via.LogLevelInfo,
 		ServerAddress: ":7331",
+		Streams: []via.StreamConfig{{
+			Name:     "CHAT",
+			Subjects: []string{"chat.>"},
+			MaxMsgs:  1000,
+			MaxAge:   24 * time.Hour,
+		}},
 	})
-
-	err := via.EnsureStream(v, via.StreamConfig{
-		Name:     "CHAT",
-		Subjects: []string{"chat.>"},
-		MaxMsgs:  1000,
-		MaxAge:   24 * time.Hour,
-	})
-	if err != nil {
-		log.Fatalf("Failed to ensure stream: %v", err)
-	}
 
 	v.AppendToHead(
 		h.Link(h.Rel("stylesheet"), h.Href("https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css")),
@@ -76,6 +72,6 @@ func main() {
 	protected := v.Group("", requireProfile)
 	protected.Page("/", ChatPage)
 
-	log.Println("Starting NATS chatroom on :7331 (embedded NATS server)")
+	log.Println("Starting NATS chatroom on :7331")
 	v.Start()
 }

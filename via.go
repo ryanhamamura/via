@@ -145,6 +145,9 @@ func (v *V) Config(cfg Options) {
 	if cfg.ContextTTL != 0 {
 		v.cfg.ContextTTL = cfg.ContextTTL
 	}
+	if cfg.Streams != nil {
+		v.cfg.Streams = cfg.Streams
+	}
 	if cfg.ActionRateLimit.Rate != 0 || cfg.ActionRateLimit.Burst != 0 {
 		v.actionRateLimit = cfg.ActionRateLimit
 	}
@@ -368,6 +371,12 @@ func (v *V) Start() {
 		} else {
 			v.defaultNATS = dn
 			v.pubsub = &natsRef{dn: dn}
+		}
+	}
+
+	for _, sc := range v.cfg.Streams {
+		if err := EnsureStream(v, sc); err != nil {
+			v.logger.Fatal().Err(err).Msgf("failed to create stream %q", sc.Name)
 		}
 	}
 

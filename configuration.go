@@ -53,9 +53,14 @@ type Options struct {
 	// Defaults to "/_datastar.js" if empty.
 	DatastarPath string
 
-	// PubSub enables publish/subscribe messaging. Use vianats.New() for an
-	// embedded NATS backend, or supply any PubSub implementation.
+	// PubSub enables publish/subscribe messaging. When nil, an embedded NATS
+	// server starts automatically in Start(). Supply any PubSub implementation
+	// to replace it.
 	PubSub PubSub
+
+	// Streams declares JetStream streams to create when Start() initializes
+	// the embedded NATS server. Ignored when a custom PubSub is configured.
+	Streams []StreamConfig
 
 	// ContextSuspendAfter is the time a context may be disconnected before
 	// the reaper suspends it (frees page resources but keeps the context

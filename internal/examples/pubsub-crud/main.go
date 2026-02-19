@@ -53,17 +53,13 @@ func main() {
 		DocumentTitle: "Bookmarks",
 		LogLevel:      via.LogLevelInfo,
 		ServerAddress: ":7331",
+		Streams: []via.StreamConfig{{
+			Name:     "BOOKMARKS",
+			Subjects: []string{"bookmarks.>"},
+			MaxMsgs:  1000,
+			MaxAge:   24 * time.Hour,
+		}},
 	})
-
-	err := via.EnsureStream(v, via.StreamConfig{
-		Name:     "BOOKMARKS",
-		Subjects: []string{"bookmarks.>"},
-		MaxMsgs:  1000,
-		MaxAge:   24 * time.Hour,
-	})
-	if err != nil {
-		log.Fatalf("Failed to ensure stream: %v", err)
-	}
 
 	v.AppendToHead(
 		h.Link(h.Rel("stylesheet"), h.Href("https://cdn.jsdelivr.net/npm/daisyui@4/dist/full.min.css")),

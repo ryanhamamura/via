@@ -2,7 +2,7 @@
 
 A chatroom built with Via and an **embedded NATS server**, demonstrating pub/sub messaging as an alternative to the custom `Rooms` implementation in `../chatroom`.
 
-Uses `delaneyj/toolbelt/embeddednats` to run NATS inside the same binary - no external server required.
+Via includes an embedded NATS server that starts automatically — no external server required.
 
 ## Key Differences from Original Chatroom
 
@@ -24,21 +24,6 @@ go run ./internal/examples/nats-chatroom
 That's it. No separate NATS server needed.
 
 Open multiple browser tabs at http://localhost:7331 to see messages broadcast across all clients.
-
-## How Embedded NATS Works
-
-```go
-// Start embedded NATS server (JetStream enabled by default)
-ns, err := embeddednats.New(ctx,
-    embeddednats.WithDirectory("./data/nats"),
-)
-ns.WaitForServer()
-
-// Get client connection to embedded server
-nc, err := ns.Client()
-```
-
-Data is persisted to `./data/nats/` for JetStream durability.
 
 ## Architecture
 
@@ -65,14 +50,16 @@ Data is persisted to `./data/nats/` for JetStream durability.
 
 ## JetStream Durability
 
-Messages persist to disk via JetStream:
+Messages persist to disk via JetStream. Streams are declared in `Options.Streams` and created automatically when `v.Start()` initializes the embedded NATS server:
 
 ```go
-js.AddStream(&nats.StreamConfig{
-    Name:      "CHAT",
-    Subjects:  []string{"chat.>"},
-    MaxMsgs:   1000,  // Keep last 1000 messages
-    MaxAge:    24 * time.Hour,
+v.Config(via.Options{
+    Streams: []via.StreamConfig{{
+        Name:     "CHAT",
+        Subjects: []string{"chat.>"},
+        MaxMsgs:  1000,
+        MaxAge:   24 * time.Hour,
+    }},
 })
 ```
 
@@ -87,23 +74,6 @@ Stop and restart the app - chat history survives.
 - Manual join/leave channels
 
 **This example - ~60 lines of NATS integration:**
-- `embeddednats.New()` starts the server
-- `nc.Subscribe(subject, handler)` for receiving
-- `nc.Publish(subject, data)` for sending
-- NATS handles delivery, no polling
-
-## Next Steps
-
-If this pattern proves useful, it could be promoted to a Via plugin:
-
-```go
-// Hypothetical future API
-v.Config(via.WithEmbeddedNATS("./data/nats"))
-
-// In page init
-c.Subscribe("events.user.*", func(data []byte) {
-    c.Sync()
-})
-
-c.Publish("events.user.login", userData)
-```
+- `via.Subscribe(c, subject, handler)` for receiving
+- `via.Publish(c, subject, data)` for sending
+- Streams declared in `Options` — NATS handles delivery, no polling

@@ -4,7 +4,7 @@ Infrastructure for multi-user real-time communication and persistent state.
 
 ## PubSub
 
-Via includes an embedded NATS server that starts automatically with `via.New()`. No external services required — pub/sub works out of the box.
+Via includes an embedded NATS server that starts automatically with `v.Start()`. No external services required — pub/sub works out of the box.
 
 ### Interface
 
@@ -73,14 +73,18 @@ This disables the embedded NATS server. The `NATSConn()` and `JetStream()` acces
 
 NATS JetStream provides persistent, replayable message streams. Useful for chat history, event logs, or any scenario where new subscribers need to catch up on past messages.
 
-### Ensure a stream exists
+### Declaring streams
+
+The recommended approach is to declare streams in `Options.Streams`. They are created automatically when `v.Start()` initializes the embedded NATS server:
 
 ```go
-err := via.EnsureStream(v, via.StreamConfig{
-    Name:     "CHAT",
-    Subjects: []string{"chat.>"},
-    MaxMsgs:  1000,
-    MaxAge:   24 * time.Hour,
+v.Config(via.Options{
+    Streams: []via.StreamConfig{{
+        Name:     "CHAT",
+        Subjects: []string{"chat.>"},
+        MaxMsgs:  1000,
+        MaxAge:   24 * time.Hour,
+    }},
 })
 ```
 
@@ -91,7 +95,16 @@ err := via.EnsureStream(v, via.StreamConfig{
 | `MaxMsgs` | Maximum number of messages to retain |
 | `MaxAge` | Maximum age before messages are discarded |
 
-Call `EnsureStream` during app initialization, before `v.Start()`.
+For dynamic stream creation after startup, `EnsureStream` is also available:
+
+```go
+err := via.EnsureStream(v, via.StreamConfig{
+    Name:     "EVENTS",
+    Subjects: []string{"events.>"},
+    MaxMsgs:  500,
+    MaxAge:   12 * time.Hour,
+})
+```
 
 ### Replay history
 
