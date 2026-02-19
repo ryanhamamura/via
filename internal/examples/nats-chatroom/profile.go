@@ -18,6 +18,12 @@ func ProfilePage(c *via.Context) {
 		via.MaxLen(20, "Must be at most 20 characters"),
 	)
 	selectedEmoji := c.Signal(existingEmoji)
+	previewName := c.Computed(func() string {
+		if name := nameField.String(); name != "" {
+			return name
+		}
+		return "Your Name"
+	})
 
 	saveToSession := func() bool {
 		if !c.ValidateAll() {
@@ -68,18 +74,13 @@ func ProfilePage(c *via.Context) {
 			h.Button(h.Text("Start Chatting"), saveAndChat.OnClick()),
 		)
 
-		previewName := nameField.String()
-		if previewName == "" {
-			previewName = "Your Name"
-		}
-
 		return h.Div(h.Class("profile-page"),
 			h.H2(h.Text("Your Profile"), h.DataViewTransition("page-title")),
 
 			// Live preview
 			h.Div(h.Class("profile-preview"),
 				h.Div(h.Class("avatar avatar-lg"), h.Text(selectedEmoji.String())),
-				h.Span(h.Class("preview-name"), h.Text(previewName)),
+				h.Span(h.Class("preview-name"), previewName.Text()),
 			),
 
 			h.Div(h.Class("profile-form"),

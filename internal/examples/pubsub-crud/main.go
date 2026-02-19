@@ -76,6 +76,12 @@ func main() {
 		titleSignal := c.Signal("")
 		urlSignal := c.Signal("")
 		targetIDSignal := c.Signal("")
+		saveLabel := c.Computed(func() string {
+			if targetIDSignal.String() != "" {
+				return "Update Bookmark"
+			}
+			return "Add Bookmark"
+		})
 
 		via.Subscribe(c, "bookmarks.events", func(evt CRUDEvent) {
 			if evt.UserID == userID {
@@ -205,11 +211,6 @@ func main() {
 			}
 			bookmarksMu.RUnlock()
 
-			saveLabel := "Add Bookmark"
-			if isEditing {
-				saveLabel = "Update Bookmark"
-			}
-
 			return h.Div(h.Class("min-h-screen bg-base-200"),
 				// Navbar
 				h.Div(h.Class("navbar bg-base-100 shadow-sm"),
@@ -225,7 +226,7 @@ func main() {
 					// Form card
 					h.Div(h.Class("card bg-base-100 shadow"),
 						h.Div(h.Class("card-body"),
-							h.H2(h.Class("card-title"), h.Text(saveLabel)),
+							h.H2(h.Class("card-title"), saveLabel.Text()),
 							h.Div(h.Class("flex flex-col gap-2"),
 								h.Input(h.Class("input input-bordered w-full"), h.Type("text"), h.Placeholder("Title"), titleSignal.Bind()),
 								h.Input(h.Class("input input-bordered w-full"), h.Type("text"), h.Placeholder("https://example.com"), urlSignal.Bind()),
@@ -233,7 +234,7 @@ func main() {
 									h.If(isEditing,
 										h.Button(h.Class("btn btn-ghost"), h.Text("Cancel"), cancelEdit.OnClick()),
 									),
-									h.Button(h.Class("btn btn-primary"), h.Text(saveLabel), save.OnClick()),
+									h.Button(h.Class("btn btn-primary"), saveLabel.Text(), save.OnClick()),
 								),
 							),
 						),
