@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -24,6 +26,55 @@ var (
 	}
 )
 
+// shipState tracks a ship lerping along a loop of waypoints.
+type shipState struct {
+	lng, lat  float64
+	waypoints [][2]float64 // [lng, lat] pairs
+	wpIdx     int          // index of next target waypoint
+	progress  float64      // 0..1 toward next waypoint
+	speed     float64      // progress increment per tick
+}
+
+func (s *shipState) tick() {
+	s.progress += s.speed
+	for s.progress >= 1 {
+		s.progress -= 1
+		s.wpIdx = (s.wpIdx + 1) % len(s.waypoints)
+	}
+	from := s.waypoints[(s.wpIdx-1+len(s.waypoints))%len(s.waypoints)]
+	to := s.waypoints[s.wpIdx]
+	s.lng = from[0] + (to[0]-from[0])*s.progress
+	s.lat = from[1] + (to[1]-from[1])*s.progress
+}
+
+// heading returns clockwise degrees from north (for SVG rotation).
+func (s *shipState) heading() float64 {
+	from := s.waypoints[(s.wpIdx-1+len(s.waypoints))%len(s.waypoints)]
+	to := s.waypoints[s.wpIdx]
+	dx := to[0] - from[0]
+	dy := to[1] - from[1]
+	// atan2 gives angle from +X axis; convert to CW from north
+	return math.Mod(math.Atan2(dx, dy)*180/math.Pi+360, 360)
+}
+
+var (
+	fleetOnce sync.Once
+	fleet     struct {
+		mu    sync.RWMutex
+		ships [3]shipState
+	}
+)
+
+const shipSVG = `<svg width="48" height="28" viewBox="0 0 80 44" xmlns="http://www.w3.org/2000/svg">` +
+	`<path d="M2 30 L10 42 L70 42 L78 30 Z" fill="#1b3a5c"/>` +
+	`<rect x="12" y="24" width="56" height="6" rx="1" fill="#2c5f8a"/>` +
+	`<rect x="18" y="14" width="46" height="10" rx="1" fill="#2c5f8a" stroke="#1b3a5c" stroke-width="0.5"/>` +
+	`<rect x="8" y="12" width="9" height="12" rx="1" fill="#d5dfe8" stroke="#2c5f8a" stroke-width="0.5"/>` +
+	`<rect x="9.5" y="13" width="6" height="4" rx="0.5" fill="#85c1e9"/>` +
+	`<rect x="10" y="4" width="5" height="8" rx="0.5" fill="#1b3a5c"/>` +
+	`<rect x="9.5" y="2" width="6" height="3" rx="0.5" fill="#c0392b"/>` +
+	`</svg>`
+
 func main() {
 	v := via.New()
 	v.Config(via.Options{
@@ -44,6 +95,50 @@ func main() {
 				vehicle.lng = -122.43 + (rand.Float64()-0.5)*0.02
 				vehicle.lat = 37.77 + (rand.Float64()-0.5)*0.02
 				vehicle.mu.Unlock()
+			}
+		}()
+	})
+
+	// Fleet of ships following waypoint loops through SF Bay.
+	fleetOnce.Do(func() {
+		fleet.ships = [3]shipState{
+			{ // Golden Gate → Alcatraz → Pier 39 → back out
+				waypoints: [][2]float64{
+					{-122.478, 37.819}, {-122.423, 37.827},
+					{-122.410, 37.809}, {-122.423, 37.827},
+				},
+				speed: 0.03,
+			},
+			{ // Oakland → Treasure Island → Angel Island → loop
+				waypoints: [][2]float64{
+					{-122.330, 37.795}, {-122.370, 37.823},
+					{-122.432, 37.860}, {-122.370, 37.823},
+				},
+				speed: 0.02,
+			},
+			{ // Sausalito → Pier 39 ferry route
+				waypoints: [][2]float64{
+					{-122.480, 37.859}, {-122.435, 37.840},
+					{-122.410, 37.809}, {-122.435, 37.840},
+				},
+				speed: 0.025,
+			},
+		}
+		// Set initial positions.
+		for i := range fleet.ships {
+			s := &fleet.ships[i]
+			s.lng = s.waypoints[0][0]
+			s.lat = s.waypoints[0][1]
+			s.wpIdx = 1
+		}
+		go func() {
+			for {
+				time.Sleep(time.Second)
+				fleet.mu.Lock()
+				for i := range fleet.ships {
+					fleet.ships[i].tick()
+				}
+				fleet.mu.Unlock()
 			}
 		}()
 	})
@@ -75,24 +170,27 @@ func main() {
 			},
 		})
 
-		// Custom SVG container ship marker (static)
-		m.AddMarker("ship", maplibre.Marker{
-			LngLat: maplibre.LngLat{Lng: -122.38, Lat: 37.80},
-			Element: `<svg width="48" height="28" viewBox="0 0 80 44" xmlns="http://www.w3.org/2000/svg">` +
-				`<path d="M2 30 L10 42 L70 42 L78 30 Z" fill="#1b3a5c"/>` +
-				`<rect x="12" y="24" width="56" height="6" rx="1" fill="#2c5f8a"/>` +
-				`<rect x="18" y="14" width="46" height="10" rx="1" fill="#2c5f8a" stroke="#1b3a5c" stroke-width="0.5"/>` +
-				`<rect x="8" y="12" width="9" height="12" rx="1" fill="#d5dfe8" stroke="#2c5f8a" stroke-width="0.5"/>` +
-				`<rect x="9.5" y="13" width="6" height="4" rx="0.5" fill="#85c1e9"/>` +
-				`<rect x="10" y="4" width="5" height="8" rx="0.5" fill="#1b3a5c"/>` +
-				`<rect x="9.5" y="2" width="6" height="3" rx="0.5" fill="#c0392b"/>` +
-				`</svg>`,
-			Anchor:   "center",
-			Rotation: 45,
-			Popup: &maplibre.Popup{
-				Content: "<strong>MSC Adriatica</strong><p>Container vessel — heading NE</p>",
-			},
-		})
+		// Animated container ships following waypoint routes
+		shipNames := [3]string{"MSC Adriatica", "Evergreen Harmony", "Maersk Aurora"}
+		type shipSignals struct{ lng, lat *via.Signal }
+		var ships [3]shipSignals
+
+		fleet.mu.RLock()
+		for i, s := range fleet.ships {
+			ships[i].lng = c.Signal(s.lng)
+			ships[i].lat = c.Signal(s.lat)
+			m.AddMarker(fmt.Sprintf("ship-%d", i), maplibre.Marker{
+				LngSignal: ships[i].lng,
+				LatSignal: ships[i].lat,
+				Element:   shipSVG,
+				Anchor:    "center",
+				Rotation:  s.heading(),
+				Popup: &maplibre.Popup{
+					Content: fmt.Sprintf("<strong>%s</strong>", shipNames[i]),
+				},
+			})
+		}
+		fleet.mu.RUnlock()
 
 		// Custom SVG vehicle marker — reads shared Go state
 		vehicleLng := c.Signal(-122.43)
@@ -113,6 +211,14 @@ func main() {
 			vehicle.mu.RUnlock()
 			vehicleLng.SetValue(lng)
 			vehicleLat.SetValue(lat)
+
+			fleet.mu.RLock()
+			for i, s := range fleet.ships {
+				ships[i].lng.SetValue(s.lng)
+				ships[i].lat.SetValue(s.lat)
+			}
+			fleet.mu.RUnlock()
+
 			c.SyncSignals()
 		})
 
