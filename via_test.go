@@ -134,9 +134,9 @@ func TestAction(t *testing.T) {
 
 func TestEventTypes(t *testing.T) {
 	tests := []struct {
-		name     string
-		attr     string
-		buildEl  func(trigger *actionTrigger) h.H
+		name    string
+		attr    string
+		buildEl func(trigger *actionTrigger) h.H
 	}{
 		{"OnSubmit", "data-on:submit", func(tr *actionTrigger) h.H { return h.Form(tr.OnSubmit()) }},
 		{"OnInput", "data-on:input", func(tr *actionTrigger) h.H { return h.Input(tr.OnInput()) }},

@@ -15,8 +15,8 @@ func main() {
 
 	v.Config(via.Options{
 		LogLevel: via.LogLevelDebug,
-		DevMode: true,
-		Plugins: []via.Plugin{
+		DevMode:  true,
+		Plugins:  []via.Plugin{
 			// picocss.Default,
 		},
 	})

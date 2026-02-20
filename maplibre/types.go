@@ -316,7 +316,7 @@ type Marker struct {
 type Popup struct {
 	Content         string // HTML content
 	LngLat          LngLat
-	HideCloseButton bool   // true removes the close button (MapLibre shows it by default)
+	HideCloseButton bool // true removes the close button (MapLibre shows it by default)
 	MaxWidth        string
 }
 

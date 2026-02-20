@@ -80,4 +80,3 @@ func (s *Signal) Int() int {
 	}
 	return 0
 }
-

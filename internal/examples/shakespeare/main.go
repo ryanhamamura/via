@@ -6,9 +6,9 @@ import (
 	"log"
 	"time"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 type DataSource interface {

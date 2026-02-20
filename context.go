@@ -25,7 +25,7 @@ type Context struct {
 	app               *V
 	view              func() h.H
 	routeParams       map[string]string
-	parentPageCtx *Context
+	parentPageCtx     *Context
 	patchChan         chan patch
 	actionLimiter     *rate.Limiter
 	actionRegistry    map[string]actionEntry
@@ -39,9 +39,9 @@ type Context struct {
 	subscriptions     []Subscription
 	subsMu            sync.Mutex
 	disposeOnce       sync.Once
-	createdAt           time.Time
-	sseConnected        atomic.Bool
-	sseDisconnectedAt   atomic.Pointer[time.Time]
+	createdAt         time.Time
+	sseConnected      atomic.Bool
+	sseDisconnectedAt atomic.Pointer[time.Time]
 }
 
 // View defines the UI rendered by this context.
@@ -630,17 +630,17 @@ func newContext(id string, route string, v *V) *Context {
 	}
 
 	return &Context{
-		id:                id,
-		route:             route,
-		csrfToken:         genCSRFToken(),
-		routeParams:       make(map[string]string),
-		app:               v,
-		actionLimiter: newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
-		actionRegistry:    make(map[string]actionEntry),
-		signals:           new(sync.Map),
-		patchChan:         make(chan patch, 8),
-		ctxDisposedChan:   make(chan struct{}, 1),
-		pageStopChan:      make(chan struct{}),
-		createdAt:         time.Now(),
+		id:              id,
+		route:           route,
+		csrfToken:       genCSRFToken(),
+		routeParams:     make(map[string]string),
+		app:             v,
+		actionLimiter:   newLimiter(v.actionRateLimit, defaultActionRate, defaultActionBurst),
+		actionRegistry:  make(map[string]actionEntry),
+		signals:         new(sync.Map),
+		patchChan:       make(chan patch, 8),
+		ctxDisposedChan: make(chan struct{}, 1),
+		pageStopChan:    make(chan struct{}),
+		createdAt:       time.Now(),
 	}
 }

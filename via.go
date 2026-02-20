@@ -240,10 +240,10 @@ func (v *V) page(route string, raw, wrapped func(*Context)) {
 			bodyElements = append(bodyElements, h.Raw("<dataspa-inspector/>"))
 		}
 		view := h.HTML5(h.HTML5Props{
-			Title:     v.cfg.DocumentTitle,
-			Head:      headElements,
-			Body:      bodyElements,
-			})
+			Title: v.cfg.DocumentTitle,
+			Head:  headElements,
+			Body:  bodyElements,
+		})
 		_ = view.Render(w)
 	}))
 }

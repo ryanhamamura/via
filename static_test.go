@@ -81,8 +81,8 @@ func TestStaticAutoSlash(t *testing.T) {
 
 func TestStaticFS(t *testing.T) {
 	fsys := fstest.MapFS{
-		"style.css":        {Data: []byte("body{}")},
-		"js/app.js":        {Data: []byte("console.log('hi')")},
+		"style.css": {Data: []byte("body{}")},
+		"js/app.js": {Data: []byte("console.log('hi')")},
 	}
 
 	v := New()
