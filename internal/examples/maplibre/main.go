@@ -75,16 +75,34 @@ func main() {
 			},
 		})
 
-		// Custom SVG ship marker (static)
+		// Custom SVG container ship marker (static)
 		m.AddMarker("ship", maplibre.Marker{
 			LngLat: maplibre.LngLat{Lng: -122.38, Lat: 37.80},
-			Element: `<svg width="32" height="32" viewBox="0 0 24 24" fill="#1a5276" xmlns="http://www.w3.org/2000/svg">` +
-				`<path d="M3 17h18l-3-8H6L3 17zm9-14l-2 4h4l-2-4zM1 19h22v2H1v-2z"/>` +
+			Element: `<svg width="48" height="48" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">` +
+				// hull
+				`<path d="M4 42 L12 54 L52 54 L60 42 Z" fill="#1b3a5c" stroke="#0e2340" stroke-width="1"/>` +
+				// deck
+				`<rect x="14" y="36" width="36" height="6" rx="1" fill="#2c5f8a"/>` +
+				// containers row 1
+				`<rect x="16" y="26" width="7" height="10" rx="0.5" fill="#e74c3c"/>` +
+				`<rect x="24" y="26" width="7" height="10" rx="0.5" fill="#2ecc71"/>` +
+				`<rect x="32" y="26" width="7" height="10" rx="0.5" fill="#f39c12"/>` +
+				`<rect x="40" y="26" width="7" height="10" rx="0.5" fill="#3498db"/>` +
+				// containers row 2
+				`<rect x="20" y="17" width="7" height="9" rx="0.5" fill="#e67e22"/>` +
+				`<rect x="28" y="17" width="7" height="9" rx="0.5" fill="#1abc9c"/>` +
+				`<rect x="36" y="17" width="7" height="9" rx="0.5" fill="#e74c3c"/>` +
+				// bridge
+				`<rect x="8" y="22" width="7" height="14" rx="1" fill="#d5dfe8" stroke="#2c5f8a" stroke-width="0.5"/>` +
+				`<rect x="9" y="23" width="5" height="4" rx="0.5" fill="#85c1e9"/>` +
+				// funnel
+				`<rect x="9" y="14" width="5" height="8" rx="0.5" fill="#1b3a5c"/>` +
+				`<rect x="8.5" y="12" width="6" height="3" rx="0.5" fill="#e74c3c"/>` +
 				`</svg>`,
 			Anchor:   "center",
 			Rotation: 45,
 			Popup: &maplibre.Popup{
-				Content: "<strong>Ferry</strong><p>Heading NE</p>",
+				Content: "<strong>MSC Adriatica</strong><p>Container vessel — heading NE</p>",
 			},
 		})
 
