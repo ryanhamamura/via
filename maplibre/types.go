@@ -302,6 +302,19 @@ type Marker struct {
 	Draggable bool
 	Popup     *Popup
 
+	// Element is raw HTML/SVG used as a custom marker instead of the
+	// default pin. When set, Color is ignored.
+	// Do not pass untrusted user input without sanitizing it first.
+	Element string
+
+	// Anchor controls which part of the element sits at the coordinate.
+	// Values: "center" (default for custom elements), "bottom" (default
+	// for the pin), "top", "left", "right", "top-left", etc.
+	Anchor string
+
+	// Rotation is clockwise degrees. Useful for directional icons (ships, vehicles).
+	Rotation float64
+
 	// Signal-backed position. When set, signals drive marker position reactively.
 	// Initial position is read from the signal values. LngLat is ignored when signals are set.
 	// If Draggable is true, drag updates write back to these signals.

@@ -179,9 +179,24 @@ func initScript(m *Map) string {
 // markerBodyJS generates JS to add a marker, assuming `map` is in scope.
 func markerBodyJS(mapID, markerID string, mk Marker) string {
 	var b strings.Builder
+
+	if mk.Element != "" {
+		b.WriteString(fmt.Sprintf(
+			`var _mkEl=document.createElement('div');_mkEl.innerHTML=%s;`,
+			jsonStr(mk.Element)))
+	}
+
 	opts := "{"
-	if mk.Color != "" {
+	if mk.Element != "" {
+		opts += `element:_mkEl.firstElementChild||_mkEl,`
+	} else if mk.Color != "" {
 		opts += fmt.Sprintf(`color:%s,`, jsonStr(mk.Color))
+	}
+	if mk.Anchor != "" {
+		opts += fmt.Sprintf(`anchor:%s,`, jsonStr(mk.Anchor))
+	}
+	if mk.Rotation != 0 {
+		opts += fmt.Sprintf(`rotation:%s,`, formatFloat(mk.Rotation))
 	}
 	if mk.Draggable {
 		opts += `draggable:true,`

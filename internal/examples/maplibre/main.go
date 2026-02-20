@@ -75,14 +75,30 @@ func main() {
 			},
 		})
 
-		// Purple vehicle marker — reads shared Go state
+		// Custom SVG ship marker (static)
+		m.AddMarker("ship", maplibre.Marker{
+			LngLat: maplibre.LngLat{Lng: -122.38, Lat: 37.80},
+			Element: `<svg width="32" height="32" viewBox="0 0 24 24" fill="#1a5276" xmlns="http://www.w3.org/2000/svg">` +
+				`<path d="M3 17h18l-3-8H6L3 17zm9-14l-2 4h4l-2-4zM1 19h22v2H1v-2z"/>` +
+				`</svg>`,
+			Anchor:   "center",
+			Rotation: 45,
+			Popup: &maplibre.Popup{
+				Content: "<strong>Ferry</strong><p>Heading NE</p>",
+			},
+		})
+
+		// Custom SVG vehicle marker — reads shared Go state
 		vehicleLng := c.Signal(-122.43)
 		vehicleLat := c.Signal(37.77)
 
 		m.AddMarker("vehicle", maplibre.Marker{
 			LngSignal: vehicleLng,
 			LatSignal: vehicleLat,
-			Color:     "#9b59b6",
+			Element: `<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">` +
+				`<circle cx="10" cy="10" r="9" fill="#9b59b6" stroke="#fff" stroke-width="2"/>` +
+				`</svg>`,
+			Anchor: "center",
 		})
 
 		c.OnInterval(time.Second, func() {
