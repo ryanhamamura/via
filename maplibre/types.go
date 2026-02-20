@@ -1,11 +1,29 @@
 package maplibre
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/ryanhamamura/via"
+)
 
 // LngLat represents a geographic coordinate.
 type LngLat struct {
 	Lng float64
 	Lat float64
+}
+
+// LngLatBounds represents a rectangular geographic area.
+type LngLatBounds struct {
+	SW LngLat
+	NE LngLat
+}
+
+// Padding represents padding in pixels on each side of the map viewport.
+type Padding struct {
+	Top    int
+	Bottom int
+	Left   int
+	Right  int
 }
 
 // Options configures the initial map state.
@@ -23,6 +41,30 @@ type Options struct {
 	// CSS dimensions for the map container. Defaults: "100%", "400px".
 	Width  string
 	Height string
+
+	// Interaction toggles (nil = MapLibre default)
+	ScrollZoom        *bool
+	BoxZoom           *bool
+	DragRotate        *bool
+	DragPan           *bool
+	Keyboard          *bool
+	DoubleClickZoom   *bool
+	TouchZoomRotate   *bool
+	TouchPitch        *bool
+	RenderWorldCopies *bool
+
+	MaxBounds *LngLatBounds
+
+	// Extra is merged last into the MapLibre constructor options object,
+	// allowing pass-through of any option not covered above.
+	Extra map[string]any
+}
+
+// --- Source interface ---
+
+// Source is implemented by map data sources (GeoJSON, vector, raster, etc.).
+type Source interface {
+	sourceJS() string
 }
 
 // GeoJSONSource provides inline GeoJSON data to MapLibre.
@@ -31,7 +73,7 @@ type GeoJSONSource struct {
 	Data any
 }
 
-func (s GeoJSONSource) toJS() string {
+func (s GeoJSONSource) sourceJS() string {
 	data, _ := json.Marshal(s.Data)
 	return `{"type":"geojson","data":` + string(data) + `}`
 }
@@ -42,7 +84,7 @@ type VectorSource struct {
 	Tiles []string
 }
 
-func (s VectorSource) toJS() string {
+func (s VectorSource) sourceJS() string {
 	obj := map[string]any{"type": "vector"}
 	if s.URL != "" {
 		obj["url"] = s.URL
@@ -61,7 +103,7 @@ type RasterSource struct {
 	TileSize int
 }
 
-func (s RasterSource) toJS() string {
+func (s RasterSource) sourceJS() string {
 	obj := map[string]any{"type": "raster"}
 	if s.URL != "" {
 		obj["url"] = s.URL
@@ -76,20 +118,134 @@ func (s RasterSource) toJS() string {
 	return string(b)
 }
 
-// sourceJSON converts a source value to its JS object literal string.
-func sourceJSON(src any) string {
-	switch s := src.(type) {
-	case GeoJSONSource:
-		return s.toJS()
-	case VectorSource:
-		return s.toJS()
-	case RasterSource:
-		return s.toJS()
-	default:
-		b, _ := json.Marshal(src)
-		return string(b)
-	}
+// RawSource is an escape hatch that passes an arbitrary JSON-marshalable
+// value directly as a MapLibre source definition.
+type RawSource struct {
+	Value any
 }
+
+func (s RawSource) sourceJS() string {
+	b, _ := json.Marshal(s.Value)
+	return string(b)
+}
+
+// --- Control interface ---
+
+// Control is implemented by map controls (navigation, scale, etc.).
+type Control interface {
+	controlJS() string
+	controlPosition() string
+}
+
+// NavigationControl adds zoom and rotation buttons.
+type NavigationControl struct {
+	Position       string // "top-right" (default), "top-left", "bottom-right", "bottom-left"
+	ShowCompass    *bool
+	ShowZoom       *bool
+	VisualizeRoll  *bool
+	VisualizePitch *bool
+}
+
+func (c NavigationControl) controlJS() string {
+	opts := map[string]any{}
+	if c.ShowCompass != nil {
+		opts["showCompass"] = *c.ShowCompass
+	}
+	if c.ShowZoom != nil {
+		opts["showZoom"] = *c.ShowZoom
+	}
+	if c.VisualizeRoll != nil {
+		opts["visualizeRoll"] = *c.VisualizeRoll
+	}
+	if c.VisualizePitch != nil {
+		opts["visualizePitch"] = *c.VisualizePitch
+	}
+	b, _ := json.Marshal(opts)
+	return "new maplibregl.NavigationControl(" + string(b) + ")"
+}
+
+func (c NavigationControl) controlPosition() string {
+	if c.Position == "" {
+		return "top-right"
+	}
+	return c.Position
+}
+
+// ScaleControl displays a scale bar.
+type ScaleControl struct {
+	Position string // default "bottom-left"
+	MaxWidth int
+	Unit     string // "metric", "imperial", "nautical"
+}
+
+func (c ScaleControl) controlJS() string {
+	opts := map[string]any{}
+	if c.MaxWidth > 0 {
+		opts["maxWidth"] = c.MaxWidth
+	}
+	if c.Unit != "" {
+		opts["unit"] = c.Unit
+	}
+	b, _ := json.Marshal(opts)
+	return "new maplibregl.ScaleControl(" + string(b) + ")"
+}
+
+func (c ScaleControl) controlPosition() string {
+	if c.Position == "" {
+		return "bottom-left"
+	}
+	return c.Position
+}
+
+// GeolocateControl adds a button to track the user's location.
+type GeolocateControl struct {
+	Position string // default "top-right"
+}
+
+func (c GeolocateControl) controlJS() string {
+	return "new maplibregl.GeolocateControl()"
+}
+
+func (c GeolocateControl) controlPosition() string {
+	if c.Position == "" {
+		return "top-right"
+	}
+	return c.Position
+}
+
+// FullscreenControl adds a fullscreen toggle button.
+type FullscreenControl struct {
+	Position string // default "top-right"
+}
+
+func (c FullscreenControl) controlJS() string {
+	return "new maplibregl.FullscreenControl()"
+}
+
+func (c FullscreenControl) controlPosition() string {
+	if c.Position == "" {
+		return "top-right"
+	}
+	return c.Position
+}
+
+// --- Camera options ---
+
+// CameraOptions configures animated camera movements (FlyTo, EaseTo, JumpTo).
+// Nil pointer fields are omitted from the JS call.
+type CameraOptions struct {
+	Center   *LngLat
+	Zoom     *float64
+	Bearing  *float64
+	Pitch    *float64
+	Duration *int     // milliseconds
+	Speed    *float64 // FlyTo only
+	Curve    *float64 // FlyTo only
+	Padding  *Padding
+	Animate  *bool
+}
+
+// --- Layer ---
 
 // Layer describes a MapLibre style layer.
 type Layer struct {
@@ -137,12 +293,20 @@ func (l Layer) toJS() string {
 	return string(b)
 }
 
+// --- Marker ---
+
 // Marker describes a map marker.
 type Marker struct {
-	LngLat    LngLat
+	LngLat    LngLat // static position (used when signals are nil)
 	Color     string
 	Draggable bool
 	Popup     *Popup
+
+	// Signal-backed position. When set, signals drive marker position reactively.
+	// Initial position is read from the signal values. LngLat is ignored when signals are set.
+	// If Draggable is true, drag updates write back to these signals.
+	LngSignal *via.Signal
+	LatSignal *via.Signal
 }
 
 // Popup describes a map popup.
@@ -156,20 +320,40 @@ type Popup struct {
 	MaxWidth        string
 }
 
-// sourceEntry pairs a source ID with its JS representation for pre-render accumulation.
+// --- Event data ---
+
+// EventData contains data from a map event (click, mousemove, etc.).
+type EventData struct {
+	LngLat   LngLat            `json:"lngLat"`
+	Point    [2]float64        `json:"point"`
+	Features []json.RawMessage `json:"features,omitempty"`
+	LayerID  string            `json:"layerID,omitempty"`
+}
+
+// --- Internal accumulation entries ---
+
 type sourceEntry struct {
 	id string
 	js string
 }
 
-// markerEntry pairs a marker ID with its definition for pre-render accumulation.
 type markerEntry struct {
 	id     string
 	marker Marker
 }
 
-// popupEntry pairs a popup ID with its definition for pre-render accumulation.
 type popupEntry struct {
 	id    string
 	popup Popup
+}
+
+type eventEntry struct {
+	event   string
+	layerID string
+	signal  *via.Signal
+}
+
+type controlEntry struct {
+	id   string
+	ctrl Control
 }

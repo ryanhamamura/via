@@ -90,7 +90,7 @@ func TestCustomDatastarPath(t *testing.T) {
 }
 
 func TestSignal(t *testing.T) {
-	var sig *signal
+	var sig *Signal
 	v := New()
 	v.Page("/", func(c *Context) {
 		sig = c.Signal("test")
@@ -106,7 +106,7 @@ func TestSignal(t *testing.T) {
 
 func TestAction(t *testing.T) {
 	var trigger *actionTrigger
-	var sig *signal
+	var sig *Signal
 	v := New()
 	v.Page("/", func(c *Context) {
 		trigger = c.Action(func() {})
@@ -167,7 +167,7 @@ func TestEventTypes(t *testing.T) {
 
 	t.Run("WithSignal", func(t *testing.T) {
 		var trigger *actionTrigger
-		var sig *signal
+		var sig *Signal
 		v := New()
 		v.Page("/", func(c *Context) {
 			trigger = c.Action(func() {})
@@ -207,7 +207,7 @@ func TestOnKeyDownWithWindow(t *testing.T) {
 func TestOnKeyDownMap(t *testing.T) {
 	t.Run("multiple bindings with different actions", func(t *testing.T) {
 		var move, shoot *actionTrigger
-		var dir *signal
+		var dir *Signal
 		v := New()
 		v.Page("/", func(c *Context) {
 			dir = c.Signal("none")
@@ -251,7 +251,7 @@ func TestOnKeyDownMap(t *testing.T) {
 
 	t.Run("WithSignal per binding", func(t *testing.T) {
 		var move *actionTrigger
-		var dir *signal
+		var dir *Signal
 		v := New()
 		v.Page("/", func(c *Context) {
 			dir = c.Signal("none")

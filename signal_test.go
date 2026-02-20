@@ -27,7 +27,7 @@ func TestSignalReturnAsString(t *testing.T) {
 	for _, testcase := range testcases {
 		t.Run(testcase.desc, func(t *testing.T) {
 			t.Parallel()
-			var sig *signal
+			var sig *Signal
 			v := New()
 			v.Page("/", func(c *Context) {
 				sig = c.Signal(testcase.given)
@@ -57,7 +57,7 @@ func TestSignalReturnAsStringComplexTypes(t *testing.T) {
 	for _, testcase := range testcases {
 		t.Run(testcase.desc, func(t *testing.T) {
 			t.Parallel()
-			var sig *signal
+			var sig *Signal
 			v := New()
 			v.Page("/", func(c *Context) {
 				c.View(func() h.H { return nil })

@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -38,29 +39,25 @@ func Plugin(v *via.V) {
 	)
 }
 
-// viaSignal is the interface satisfied by via's *signal type.
-type viaSignal interface {
-	ID() string
-	String() string
-	SetValue(any)
-	Bind() h.H
-}
-
 // Map represents a MapLibre GL map instance bound to a Via context.
 type Map struct {
+	// Viewport signals — readable with .Text(), .String(), etc.
+	CenterLng *via.Signal
+	CenterLat *via.Signal
+	Zoom      *via.Signal
+	Bearing   *via.Signal
+	Pitch     *via.Signal
+
 	id   string
 	ctx  *via.Context
 	opts Options
 
-	// Viewport signals for browser → server sync
-	centerLng, centerLat viaSignal
-	zoom, bearing, pitch viaSignal
-
-	// Pre-render accumulation
-	sources []sourceEntry
-	layers  []Layer
-	markers []markerEntry
-	popups  []popupEntry
+	sources  []sourceEntry
+	layers   []Layer
+	markers  []markerEntry
+	popups   []popupEntry
+	events   []eventEntry
+	controls []controlEntry
 
 	rendered bool
 }
@@ -81,11 +78,11 @@ func New(c *via.Context, opts Options) *Map {
 		opts: opts,
 	}
 
-	m.centerLng = c.Signal(opts.Center.Lng)
-	m.centerLat = c.Signal(opts.Center.Lat)
-	m.zoom = c.Signal(opts.Zoom)
-	m.bearing = c.Signal(opts.Bearing)
-	m.pitch = c.Signal(opts.Pitch)
+	m.CenterLng = c.Signal(opts.Center.Lng)
+	m.CenterLat = c.Signal(opts.Center.Lat)
+	m.Zoom = c.Signal(opts.Zoom)
+	m.Bearing = c.Signal(opts.Bearing)
+	m.Pitch = c.Signal(opts.Pitch)
 
 	return m
 }
@@ -93,10 +90,14 @@ func New(c *via.Context, opts Options) *Map {
 // Element returns the h.H DOM tree for the map. Call this once inside your View function.
 // After Element() is called, subsequent source/layer/marker/popup operations
 // use ExecScript instead of accumulating for the init script.
-func (m *Map) Element() h.H {
+//
+// Extra children are appended inside the wrapper div (useful for event inputs
+// and data-effect binding elements).
+func (m *Map) Element(extra ...h.H) h.H {
 	m.rendered = true
 
-	return h.Div(h.ID("_vwrap_"+m.id),
+	children := []h.H{
+		h.ID("_vwrap_" + m.id),
 		// Map container — morph-ignored so MapLibre's DOM isn't destroyed on Sync()
 		h.Div(
 			h.ID("_vmap_"+m.id),
@@ -104,14 +105,39 @@ func (m *Map) Element() h.H {
 			h.Attr("style", fmt.Sprintf("width:%s;height:%s", m.opts.Width, m.opts.Height)),
 		),
 		// Hidden inputs for viewport signal binding (outside morph-ignored zone)
-		h.Input(h.Type("hidden"), m.centerLng.Bind()),
-		h.Input(h.Type("hidden"), m.centerLat.Bind()),
-		h.Input(h.Type("hidden"), m.zoom.Bind()),
-		h.Input(h.Type("hidden"), m.bearing.Bind()),
-		h.Input(h.Type("hidden"), m.pitch.Bind()),
-		// Init script
-		h.Script(h.Raw(initScript(m))),
-	)
+		h.Input(h.Type("hidden"), m.CenterLng.Bind()),
+		h.Input(h.Type("hidden"), m.CenterLat.Bind()),
+		h.Input(h.Type("hidden"), m.Zoom.Bind()),
+		h.Input(h.Type("hidden"), m.Bearing.Bind()),
+		h.Input(h.Type("hidden"), m.Pitch.Bind()),
+	}
+
+	// data-effect elements for signal-backed markers
+	for _, me := range m.markers {
+		if me.marker.LngSignal != nil && me.marker.LatSignal != nil {
+			children = append(children, h.Div(
+				h.Attr("style", "display:none"),
+				h.DataEffect(markerEffectExpr(m.id, me.id, me.marker)),
+			))
+		}
+	}
+
+	// Hidden inputs for signal-backed marker position writeback (drag → signal)
+	for _, me := range m.markers {
+		if me.marker.LngSignal != nil && me.marker.LatSignal != nil {
+			children = append(children,
+				h.Input(h.Type("hidden"), me.marker.LngSignal.Bind()),
+				h.Input(h.Type("hidden"), me.marker.LatSignal.Bind()),
+			)
+		}
+	}
+
+	children = append(children, extra...)
+
+	// Init script last
+	children = append(children, h.Script(h.Raw(initScript(m))))
+
+	return h.Div(children...)
 }
 
 // --- Viewport readers (signal → Go) ---
@@ -119,32 +145,43 @@ func (m *Map) Element() h.H {
 // Center returns the current map center from synced signals.
 func (m *Map) Center() LngLat {
 	return LngLat{
-		Lng: parseFloat(m.centerLng.String()),
-		Lat: parseFloat(m.centerLat.String()),
+		Lng: parseFloat(m.CenterLng.String()),
+		Lat: parseFloat(m.CenterLat.String()),
 	}
 }
 
-// Zoom returns the current map zoom level from the synced signal.
-func (m *Map) Zoom() float64 {
-	return parseFloat(m.zoom.String())
+// --- Camera methods ---
+
+// FlyTo animates the map to the target camera state.
+func (m *Map) FlyTo(opts CameraOptions) {
+	m.exec(fmt.Sprintf(`m.flyTo(%s);`, cameraOptionsJS(opts)))
 }
 
-// Bearing returns the current map bearing from the synced signal.
-func (m *Map) Bearing() float64 {
-	return parseFloat(m.bearing.String())
+// EaseTo eases the map to the target camera state.
+func (m *Map) EaseTo(opts CameraOptions) {
+	m.exec(fmt.Sprintf(`m.easeTo(%s);`, cameraOptionsJS(opts)))
 }
 
-// Pitch returns the current map pitch from the synced signal.
-func (m *Map) Pitch() float64 {
-	return parseFloat(m.pitch.String())
+// JumpTo jumps the map to the target camera state without animation.
+func (m *Map) JumpTo(opts CameraOptions) {
+	m.exec(fmt.Sprintf(`m.jumpTo(%s);`, cameraOptionsJS(opts)))
 }
 
-// --- Viewport setters (Go → browser) ---
+// FitBounds fits the map to the given bounds with optional camera options.
+func (m *Map) FitBounds(bounds LngLatBounds, opts ...CameraOptions) {
+	boundsJS := fmt.Sprintf("[[%s,%s],[%s,%s]]",
+		formatFloat(bounds.SW.Lng), formatFloat(bounds.SW.Lat),
+		formatFloat(bounds.NE.Lng), formatFloat(bounds.NE.Lat))
+	if len(opts) > 0 {
+		m.exec(fmt.Sprintf(`m.fitBounds(%s,%s);`, boundsJS, cameraOptionsJS(opts[0])))
+	} else {
+		m.exec(fmt.Sprintf(`m.fitBounds(%s);`, boundsJS))
+	}
+}
 
-// FlyTo animates the map to the given center and zoom.
-func (m *Map) FlyTo(center LngLat, zoom float64) {
-	m.exec(fmt.Sprintf(`m.flyTo({center:[%s,%s],zoom:%s});`,
-		formatFloat(center.Lng), formatFloat(center.Lat), formatFloat(zoom)))
+// Stop aborts any in-progress camera animation.
+func (m *Map) Stop() {
+	m.exec(`m.stop();`)
 }
 
 // SetCenter sets the map center without animation.
@@ -175,10 +212,9 @@ func (m *Map) SetStyle(url string) {
 
 // --- Source methods ---
 
-// AddSource adds a source to the map. src should be a GeoJSONSource,
-// VectorSource, RasterSource, or any JSON-marshalable value.
-func (m *Map) AddSource(id string, src any) {
-	js := sourceJSON(src)
+// AddSource adds a source to the map.
+func (m *Map) AddSource(id string, src Source) {
+	js := src.sourceJS()
 	if !m.rendered {
 		m.sources = append(m.sources, sourceEntry{id: id, js: js})
 		return
@@ -187,7 +223,6 @@ func (m *Map) AddSource(id string, src any) {
 }
 
 // RemoveSource removes a source from the map.
-// Before render, it removes a previously accumulated source. After render, it issues an ExecScript.
 func (m *Map) RemoveSource(id string) {
 	if !m.rendered {
 		for i, s := range m.sources {
@@ -222,7 +257,6 @@ func (m *Map) AddLayer(layer Layer) {
 }
 
 // RemoveLayer removes a layer from the map.
-// Before render, it removes a previously accumulated layer. After render, it issues an ExecScript.
 func (m *Map) RemoveLayer(id string) {
 	if !m.rendered {
 		for i, l := range m.layers {
@@ -261,7 +295,6 @@ func (m *Map) AddMarker(id string, marker Marker) {
 }
 
 // RemoveMarker removes a marker from the map.
-// Before render, it removes a previously accumulated marker. After render, it issues an ExecScript.
 func (m *Map) RemoveMarker(id string) {
 	if !m.rendered {
 		for i, me := range m.markers {
@@ -288,7 +321,6 @@ func (m *Map) ShowPopup(id string, popup Popup) {
 }
 
 // ClosePopup closes a standalone popup on the map.
-// Before render, it removes a previously accumulated popup. After render, it issues an ExecScript.
 func (m *Map) ClosePopup(id string) {
 	if !m.rendered {
 		for i, pe := range m.popups {
@@ -302,6 +334,64 @@ func (m *Map) ClosePopup(id string) {
 	m.exec(closePopupJS(id))
 }
 
+// --- Control methods ---
+
+// AddControl adds a control to the map.
+func (m *Map) AddControl(id string, ctrl Control) {
+	if !m.rendered {
+		m.controls = append(m.controls, controlEntry{id: id, ctrl: ctrl})
+		return
+	}
+	m.exec(addControlJS(m.id, id, ctrl))
+}
+
+// RemoveControl removes a control from the map.
+func (m *Map) RemoveControl(id string) {
+	if !m.rendered {
+		for i, ce := range m.controls {
+			if ce.id == id {
+				m.controls = append(m.controls[:i], m.controls[i+1:]...)
+				return
+			}
+		}
+		return
+	}
+	m.exec(removeControlJS(id))
+}
+
+// --- Event methods ---
+
+// OnClick returns a MapEvent that fires on map click.
+func (m *Map) OnClick() *MapEvent {
+	return m.on("click", "")
+}
+
+// OnLayerClick returns a MapEvent that fires on click of a specific layer.
+func (m *Map) OnLayerClick(layerID string) *MapEvent {
+	return m.on("click", layerID)
+}
+
+// OnMouseMove returns a MapEvent that fires on map mouse movement.
+func (m *Map) OnMouseMove() *MapEvent {
+	return m.on("mousemove", "")
+}
+
+// OnContextMenu returns a MapEvent that fires on right-click.
+func (m *Map) OnContextMenu() *MapEvent {
+	return m.on("contextmenu", "")
+}
+
+func (m *Map) on(event, layerID string) *MapEvent {
+	sig := m.ctx.Signal("")
+	ev := &MapEvent{signal: sig}
+	m.events = append(m.events, eventEntry{
+		event:   event,
+		layerID: layerID,
+		signal:  sig,
+	})
+	return ev
+}
+
 // --- Escape hatch ---
 
 // Exec runs arbitrary JS with the map available as `m`.
@@ -312,6 +402,30 @@ func (m *Map) Exec(js string) {
 // exec sends guarded JS to the browser via ExecScript.
 func (m *Map) exec(body string) {
 	m.ctx.ExecScript(guard(m.id, body))
+}
+
+// --- MapEvent ---
+
+// MapEvent wraps a signal that receives map event data as JSON.
+type MapEvent struct {
+	signal *via.Signal
+}
+
+// Bind returns the data-bind attribute for this event's signal.
+func (e *MapEvent) Bind() h.H { return e.signal.Bind() }
+
+// Data parses the event signal's JSON value into EventData.
+func (e *MapEvent) Data() EventData {
+	var d EventData
+	json.Unmarshal([]byte(e.signal.String()), &d)
+	return d
+}
+
+// Input creates a hidden input wired to this event's signal.
+// Pass action triggers (e.g. handleClick.OnInput()) as attrs.
+func (e *MapEvent) Input(attrs ...h.H) h.H {
+	all := append([]h.H{h.Type("hidden"), e.Bind()}, attrs...)
+	return h.Input(all...)
 }
 
 func parseFloat(s string) float64 {

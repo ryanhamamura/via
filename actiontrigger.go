@@ -97,7 +97,7 @@ func buildAttrKey(event string, opts *triggerOpts) string {
 }
 
 // WithSignal sets a signal value before triggering the action.
-func WithSignal(sig *signal, value string) ActionTriggerOption {
+func WithSignal(sig *Signal, value string) ActionTriggerOption {
 	return withSignalOpt{
 		signalID: sig.ID(),
 		value:    fmt.Sprintf("'%s'", value),
@@ -105,7 +105,7 @@ func WithSignal(sig *signal, value string) ActionTriggerOption {
 }
 
 // WithSignalInt sets a signal to an int value before triggering the action.
-func WithSignalInt(sig *signal, value int) ActionTriggerOption {
+func WithSignalInt(sig *Signal, value int) ActionTriggerOption {
 	return withSignalOpt{
 		signalID: sig.ID(),
 		value:    strconv.Itoa(value),

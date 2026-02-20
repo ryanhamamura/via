@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"math/rand"
+	"time"
 
 	"github.com/ryanhamamura/via"
 	"github.com/ryanhamamura/via/h"
@@ -25,7 +26,10 @@ func main() {
 			Height: "500px",
 		})
 
-		// Markers with popups
+		m.AddControl("nav", maplibre.NavigationControl{})
+		m.AddControl("scale", maplibre.ScaleControl{Unit: "metric"})
+
+		// Static markers with popups
 		m.AddMarker("sf", maplibre.Marker{
 			LngLat: maplibre.LngLat{Lng: -122.4194, Lat: 37.7749},
 			Color:  "#e74c3c",
@@ -39,6 +43,43 @@ func main() {
 			Popup: &maplibre.Popup{
 				Content: "<strong>Oakland</strong>",
 			},
+		})
+
+		// Signal-backed marker — server pushes position updates
+		vehicleLng := c.Signal(-122.43)
+		vehicleLat := c.Signal(37.77)
+
+		m.AddMarker("vehicle", maplibre.Marker{
+			LngSignal: vehicleLng,
+			LatSignal: vehicleLat,
+			Color:     "#9b59b6",
+		})
+
+		c.OnInterval(time.Second, func() {
+			vehicleLng.SetValue(-122.43 + (rand.Float64()-0.5)*0.02)
+			vehicleLat.SetValue(37.77 + (rand.Float64()-0.5)*0.02)
+			c.SyncSignals()
+		})
+
+		// Draggable marker — user drags, signals update
+		pinLng := c.Signal(-122.41)
+		pinLat := c.Signal(37.78)
+
+		m.AddMarker("pin", maplibre.Marker{
+			LngSignal: pinLng,
+			LatSignal: pinLat,
+			Color:     "#3498db",
+			Draggable: true,
+		})
+
+		// Click event — click to place a marker
+		click := m.OnClick()
+		handleClick := c.Action(func() {
+			e := click.Data()
+			m.AddMarker("clicked", maplibre.Marker{
+				LngLat: e.LngLat,
+				Color:  "#f39c12",
+			})
 		})
 
 		// GeoJSON polygon source + fill layer
@@ -70,24 +111,20 @@ func main() {
 			},
 		})
 
-		// Viewport info signal (updated on action)
-		viewportInfo := c.Signal("")
-
-		// FlyTo action
+		// FlyTo actions using CameraOptions
+		zoom14 := 14.0
 		flyToSF := c.Action(func() {
-			m.FlyTo(maplibre.LngLat{Lng: -122.4194, Lat: 37.7749}, 14)
+			m.FlyTo(maplibre.CameraOptions{
+				Center: &maplibre.LngLat{Lng: -122.4194, Lat: 37.7749},
+				Zoom:   &zoom14,
+			})
 		})
 
 		flyToOak := c.Action(func() {
-			m.FlyTo(maplibre.LngLat{Lng: -122.2711, Lat: 37.8044}, 14)
-		})
-
-		// Read viewport action
-		readViewport := c.Action(func() {
-			center := m.Center()
-			zoom := m.Zoom()
-			viewportInfo.SetValue(fmt.Sprintf("Center: %.4f, %.4f | Zoom: %.1f", center.Lng, center.Lat, zoom))
-			c.Sync()
+			m.FlyTo(maplibre.CameraOptions{
+				Center: &maplibre.LngLat{Lng: -122.2711, Lat: 37.8044},
+				Zoom:   &zoom14,
+			})
 		})
 
 		c.View(func() h.H {
@@ -95,13 +132,19 @@ func main() {
 				h.Div(
 					h.Attr("style", "max-width:960px;margin:0 auto;padding:1rem;font-family:sans-serif"),
 					h.H1(h.Text("MapLibre GL Example")),
-					m.Element(),
-					h.Div(h.Attr("style", "margin-top:1rem;display:flex;gap:0.5rem"),
+					m.Element(
+						click.Input(handleClick.OnInput()),
+					),
+					h.Div(h.Attr("style", "margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap"),
 						h.Button(h.Text("Fly to San Francisco"), flyToSF.OnClick()),
 						h.Button(h.Text("Fly to Oakland"), flyToOak.OnClick()),
-						h.Button(h.Text("Read Viewport"), readViewport.OnClick()),
 					),
-					h.P(viewportInfo.Text()),
+					h.Div(h.Attr("style", "margin-top:0.5rem;font-size:0.9rem"),
+						h.P(h.Text("Zoom: "), m.Zoom.Text()),
+						h.P(h.Text("Center: "), m.CenterLng.Text(), h.Text(", "), m.CenterLat.Text()),
+						h.P(h.Text("Vehicle: "), vehicleLng.Text(), h.Text(", "), vehicleLat.Text()),
+						h.P(h.Text("Draggable Pin: "), pinLng.Text(), h.Text(", "), pinLat.Text()),
+					),
 				),
 			)
 		})

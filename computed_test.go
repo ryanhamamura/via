@@ -26,7 +26,7 @@ func TestComputedBasic(t *testing.T) {
 func TestComputedReactivity(t *testing.T) {
 	v := New()
 	var cs *computedSignal
-	var sig1 *signal
+	var sig1 *Signal
 	v.Page("/", func(c *Context) {
 		sig1 = c.Signal("a")
 		sig2 := c.Signal("b")
@@ -83,7 +83,7 @@ func TestComputedText(t *testing.T) {
 func TestComputedChangeDetection(t *testing.T) {
 	v := New()
 	var ctx *Context
-	var sig *signal
+	var sig *Signal
 	v.Page("/", func(c *Context) {
 		ctx = c
 		sig = c.Signal("a")

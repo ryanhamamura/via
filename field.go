@@ -1,10 +1,10 @@
 package via
 
 // Field is a signal with built-in validation rules and error state.
-// It embeds *signal, so all signal methods (Bind, String, Int, Bool, SetValue, Text, ID)
+// It embeds *Signal, so all signal methods (Bind, String, Int, Bool, SetValue, Text, ID)
 // work transparently.
 type Field struct {
-	*signal
+	*Signal
 	rules      []Rule
 	errors     []string
 	initialVal any

@@ -175,11 +175,11 @@ func (c *Context) OnInterval(duration time.Duration, handler func()) func() {
 // the Context before each action call.
 // If any signal value is updated by the server, the update is automatically sent to the
 // browser when using Sync() or SyncSignsls().
-func (c *Context) Signal(v any) *signal {
+func (c *Context) Signal(v any) *Signal {
 	sigID := genRandID()
 	if v == nil {
 		c.app.logErr(c, "failed to bind signal: nil signal value")
-		return &signal{
+		return &Signal{
 			id:  sigID,
 			val: "error",
 			err: fmt.Errorf("context '%s' failed to bind signal '%s': nil signal value", c.id, sigID),
@@ -191,7 +191,7 @@ func (c *Context) Signal(v any) *signal {
 			v = string(j)
 		}
 	}
-	sig := &signal{
+	sig := &Signal{
 		id:      sigID,
 		val:     v,
 		changed: true,
@@ -254,13 +254,13 @@ func (c *Context) injectSignals(sigs map[string]any) {
 	for sigID, val := range sigs {
 		item, ok := c.signals.Load(sigID)
 		if !ok {
-			c.signals.Store(sigID, &signal{
+			c.signals.Store(sigID, &Signal{
 				id:  sigID,
 				val: val,
 			})
 			continue
 		}
-		if sig, ok := item.(*signal); ok {
+		if sig, ok := item.(*Signal); ok {
 			sig.val = val
 			sig.changed = false
 		}
@@ -284,13 +284,14 @@ func (c *Context) prepareSignalsForPatch() map[string]any {
 	updatedSigs := make(map[string]any)
 	c.signals.Range(func(sigID, value any) bool {
 		switch sig := value.(type) {
-		case *signal:
+		case *Signal:
 			if sig.err != nil {
 				c.app.logWarn(c, "signal '%s' is out of sync: %v", sig.id, sig.err)
 				return true
 			}
 			if sig.changed {
 				updatedSigs[sigID.(string)] = fmt.Sprintf("%v", sig.val)
+				sig.changed = false
 			}
 		case *computedSignal:
 			sig.recompute()
@@ -594,7 +595,7 @@ func (c *Context) unsubscribeAll() {
 // can operate on all fields by default.
 func (c *Context) Field(initial any, rules ...Rule) *Field {
 	f := &Field{
-		signal:     c.Signal(initial),
+		Signal:     c.Signal(initial),
 		rules:      rules,
 		initialVal: initial,
 	}
