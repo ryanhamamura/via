@@ -180,24 +180,30 @@ func initScript(m *Map) string {
 func markerBodyJS(mapID, markerID string, mk Marker) string {
 	var b strings.Builder
 
+	// Use a wrapper div for custom elements so MapLibre rotates the div
+	// while we can independently flip the inner element to prevent inversion.
 	if mk.Element != "" {
 		b.WriteString(fmt.Sprintf(
-			`var _mkEl=document.createElement('div');_mkEl.innerHTML=%s;`,
+			`var _mkEl=document.createElement('div');`+
+				`_mkEl.style.display='inline-block';_mkEl.style.lineHeight='0';`+
+				`_mkEl.innerHTML=%s;`,
 			jsonStr(mk.Element)))
 	}
 
 	opts := "{"
 	if mk.Element != "" {
-		opts += `element:_mkEl.firstElementChild||_mkEl,`
+		opts += `element:_mkEl,`
 	} else if mk.Color != "" {
 		opts += fmt.Sprintf(`color:%s,`, jsonStr(mk.Color))
 	}
 	if mk.Anchor != "" {
 		opts += fmt.Sprintf(`anchor:%s,`, jsonStr(mk.Anchor))
 	}
-	if mk.RotationSignal != nil {
+	// When both Element and RotationSignal are set, skip initial rotation
+	// in opts — we apply it post-creation with flip normalization.
+	if mk.RotationSignal != nil && mk.Element == "" {
 		opts += fmt.Sprintf(`rotation:%s,`, mk.RotationSignal.String())
-	} else if mk.Rotation != 0 {
+	} else if mk.RotationSignal == nil && mk.Rotation != 0 {
 		opts += fmt.Sprintf(`rotation:%s,`, formatFloat(mk.Rotation))
 	}
 	if mk.Draggable {
@@ -212,6 +218,15 @@ func markerBodyJS(mapID, markerID string, mk Marker) string {
 	} else {
 		b.WriteString(fmt.Sprintf(`var mk=new maplibregl.Marker(%s).setLngLat([%s,%s]);`,
 			opts, formatFloat(mk.LngLat.Lng), formatFloat(mk.LngLat.Lat)))
+	}
+
+	// Apply initial rotation with flip normalization for custom elements.
+	if mk.RotationSignal != nil && mk.Element != "" {
+		b.WriteString(fmt.Sprintf(
+			`var _r=%s,_f=_r>90||_r<-90;if(_f)_r=_r>0?_r-180:_r+180;`+
+				`mk.setRotation(_r);`+
+				`var _ch=_mkEl.firstElementChild;if(_ch&&_f)_ch.style.transform='scaleX(-1)';`,
+			mk.RotationSignal.String()))
 	}
 
 	if mk.Popup != nil {
@@ -262,7 +277,17 @@ func markerEffectExpr(mapID, markerID string, mk Marker) string {
 			`if(m&&m._via_markers[%[2]s]){`+
 			`m._via_markers[%[2]s].setLngLat([lng,lat])`,
 		jsonStr(mapID), jsonStr(markerID)))
-	if mk.RotationSignal != nil {
+	if mk.RotationSignal != nil && mk.Element != "" {
+		// Normalize rotation to [-90,90] and horizontally flip the inner
+		// element when |rotation| > 90° to prevent upside-down markers.
+		b.WriteString(fmt.Sprintf(
+			`;var _mk=m._via_markers[%[1]s],_f=rot>90||rot<-90;`+
+				`if(_f)rot=rot>0?rot-180:rot+180;`+
+				`_mk.setRotation(rot);`+
+				`var _ch=_mk.getElement().firstElementChild;`+
+				`if(_ch)_ch.style.transform=_f?'scaleX(-1)':''`,
+			jsonStr(markerID)))
+	} else if mk.RotationSignal != nil {
 		b.WriteString(fmt.Sprintf(`;m._via_markers[%s].setRotation(rot)`, jsonStr(markerID)))
 	}
 	b.WriteString(`}`)
