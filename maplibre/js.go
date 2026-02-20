@@ -195,7 +195,9 @@ func markerBodyJS(mapID, markerID string, mk Marker) string {
 	if mk.Anchor != "" {
 		opts += fmt.Sprintf(`anchor:%s,`, jsonStr(mk.Anchor))
 	}
-	if mk.Rotation != 0 {
+	if mk.RotationSignal != nil {
+		opts += fmt.Sprintf(`rotation:%s,`, mk.RotationSignal.String())
+	} else if mk.Rotation != 0 {
 		opts += fmt.Sprintf(`rotation:%s,`, formatFloat(mk.Rotation))
 	}
 	if mk.Draggable {
@@ -250,14 +252,21 @@ func dragendHandlerJS(mapID, markerID string, mk Marker) string {
 func markerEffectExpr(mapID, markerID string, mk Marker) string {
 	// Read signals before the guard so Datastar tracks them as dependencies
 	// even when the map/marker hasn't loaded yet on first evaluation.
-	return fmt.Sprintf(
-		`var lng=$%s,lat=$%s;`+
-			`var m=window.__via_maps&&window.__via_maps[%s];`+
-			`if(m&&m._via_markers[%s]){`+
-			`m._via_markers[%s].setLngLat([lng,lat])}`,
-		mk.LngSignal.ID(), mk.LatSignal.ID(),
-		jsonStr(mapID), jsonStr(markerID), jsonStr(markerID),
-	)
+	var b strings.Builder
+	b.WriteString(fmt.Sprintf(`var lng=$%s,lat=$%s;`, mk.LngSignal.ID(), mk.LatSignal.ID()))
+	if mk.RotationSignal != nil {
+		b.WriteString(fmt.Sprintf(`var rot=$%s;`, mk.RotationSignal.ID()))
+	}
+	b.WriteString(fmt.Sprintf(
+		`var m=window.__via_maps&&window.__via_maps[%s];`+
+			`if(m&&m._via_markers[%[2]s]){`+
+			`m._via_markers[%[2]s].setLngLat([lng,lat])`,
+		jsonStr(mapID), jsonStr(markerID)))
+	if mk.RotationSignal != nil {
+		b.WriteString(fmt.Sprintf(`;m._via_markers[%s].setRotation(rot)`, jsonStr(markerID)))
+	}
+	b.WriteString(`}`)
+	return b.String()
 }
 
 // addMarkerJS generates a self-contained IIFE to add a marker post-render.

@@ -313,6 +313,7 @@ type Marker struct {
 	Anchor string
 
 	// Rotation is clockwise degrees. Useful for directional icons (ships, vehicles).
+	// Ignored when RotationSignal is set.
 	Rotation float64
 
 	// Signal-backed position. When set, signals drive marker position reactively.
@@ -320,6 +321,9 @@ type Marker struct {
 	// If Draggable is true, drag updates write back to these signals.
 	LngSignal *via.Signal
 	LatSignal *via.Signal
+
+	// RotationSignal drives marker rotation reactively. When set, Rotation is ignored.
+	RotationSignal *via.Signal
 }
 
 // Popup describes a map popup.

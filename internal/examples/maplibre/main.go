@@ -172,19 +172,21 @@ func main() {
 
 		// Animated container ships following waypoint routes
 		shipNames := [3]string{"MSC Adriatica", "Evergreen Harmony", "Maersk Aurora"}
-		type shipSignals struct{ lng, lat *via.Signal }
+		type shipSignals struct{ lng, lat, rot *via.Signal }
 		var ships [3]shipSignals
 
 		fleet.mu.RLock()
 		for i, s := range fleet.ships {
 			ships[i].lng = c.Signal(s.lng)
 			ships[i].lat = c.Signal(s.lat)
+			// SVG bow points right (east), so subtract 90° from the north-based heading.
+			ships[i].rot = c.Signal(s.heading() - 90)
 			m.AddMarker(fmt.Sprintf("ship-%d", i), maplibre.Marker{
-				LngSignal: ships[i].lng,
-				LatSignal: ships[i].lat,
-				Element:   shipSVG,
-				Anchor:    "center",
-				Rotation:  s.heading(),
+				LngSignal:      ships[i].lng,
+				LatSignal:      ships[i].lat,
+				RotationSignal: ships[i].rot,
+				Element:        shipSVG,
+				Anchor:         "center",
 				Popup: &maplibre.Popup{
 					Content: fmt.Sprintf("<strong>%s</strong>", shipNames[i]),
 				},
@@ -216,6 +218,7 @@ func main() {
 			for i, s := range fleet.ships {
 				ships[i].lng.SetValue(s.lng)
 				ships[i].lat.SetValue(s.lat)
+				ships[i].rot.SetValue(s.heading() - 90)
 			}
 			fleet.mu.RUnlock()
 

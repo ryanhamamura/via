@@ -122,13 +122,18 @@ func (m *Map) Element(extra ...h.H) h.H {
 		}
 	}
 
-	// Hidden inputs for signal-backed marker position writeback (drag → signal)
+	// Hidden inputs for signal-backed marker position/rotation writeback
 	for _, me := range m.markers {
 		if me.marker.LngSignal != nil && me.marker.LatSignal != nil {
 			children = append(children,
 				h.Input(h.Type("hidden"), me.marker.LngSignal.Bind()),
 				h.Input(h.Type("hidden"), me.marker.LatSignal.Bind()),
 			)
+			if me.marker.RotationSignal != nil {
+				children = append(children,
+					h.Input(h.Type("hidden"), me.marker.RotationSignal.Bind()),
+				)
+			}
 		}
 	}
 
