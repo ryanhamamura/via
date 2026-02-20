@@ -1,8 +1,6 @@
 package via
 
 import (
-	"time"
-
 	"github.com/alexedwards/scs/v2"
 	"github.com/rs/zerolog"
 )
@@ -61,16 +59,6 @@ type Options struct {
 	// Streams declares JetStream streams to create when Start() initializes
 	// the embedded NATS server. Ignored when a custom PubSub is configured.
 	Streams []StreamConfig
-
-	// ContextSuspendAfter is the time a context may be disconnected before
-	// the reaper suspends it (frees page resources but keeps the context
-	// shell for seamless re-init on reconnect). Default: 15m.
-	ContextSuspendAfter time.Duration
-
-	// ContextTTL is the maximum time a context may exist without an SSE
-	// connection before the background reaper fully disposes it.
-	// Default: 1h. Negative value disables the reaper.
-	ContextTTL time.Duration
 
 	// ActionRateLimit configures the default token-bucket rate limiter for
 	// action endpoints. Zero values use built-in defaults (10 req/s, burst 20).

@@ -66,7 +66,6 @@ v.Config(via.Options{
     Plugins:         []via.Plugin{MyPlugin},
     SessionManager:  sm,
     PubSub:          customBackend,
-    ContextTTL:      60 * time.Second,
     ActionRateLimit: via.RateLimitConfig{Rate: 20, Burst: 40},
 })
 ```
@@ -83,7 +82,6 @@ v.Config(via.Options{
 | `DatastarContent` | (embedded) | Custom Datastar JS bytes |
 | `DatastarPath` | `"/_datastar.js"` | URL path for the Datastar script |
 | `PubSub` | embedded NATS | Custom PubSub backend. Replaces the default NATS. See [PubSub and Sessions](pubsub-and-sessions.md) |
-| `ContextTTL` | `30s` | Max time a context survives without an SSE connection before cleanup. Negative value disables the reaper |
 | `ActionRateLimit` | `10 req/s, burst 20` | Default token-bucket rate limiter for action endpoints. Rate of `-1` disables limiting |
 
 ## Static Files

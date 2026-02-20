@@ -14,7 +14,7 @@ Browser hits page → new Context created → init function runs → HTML render
                         action fires → signals injected from browser → handler runs → Sync() → DOM patched
 ```
 
-The context is disposed when the SSE connection closes (tab close, navigation away, network loss). A background reaper also cleans up contexts that never establish an SSE connection within `ContextTTL` (default 30s).
+The context lives until the browser tab closes (detected via a `beforeunload` beacon) or the server shuts down. There is no background reaper — contexts persist across temporary SSE disconnections so backgrounded tabs resume seamlessly.
 
 During [SPA navigation](routing-and-navigation.md#spa-navigation), the context itself survives — only page-level state (signals, actions, fields, intervals, subscriptions) is reset. The SSE connection persists.
 
