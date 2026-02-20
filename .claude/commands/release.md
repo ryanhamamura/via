@@ -1,14 +1,21 @@
-Create a new release for this project. Steps:
+Create a new release for this project.
 
-1. Fetch tags from all remotes so the version list is current.
-2. Check for uncommitted changes. If any exist, commit them with a clean semantic commit message. No Claude attribution lines.
-3. Review the commits since the last tag. Based on their content, recommend a semver bump:
+## Pre-flight
+
+1. **Worktree guard**: If the working directory is inside `.claude/worktrees/`, STOP and tell the user: "Releases must be created from a non-worktree session on main. Exit this worktree or start a new session, then run /release." Do not proceed.
+2. Verify you are on `main`. If not, STOP.
+3. Verify there are no uncommitted changes. If there are, STOP — they should go through a PR.
+4. Run `git pull --ff-only` on main. Fetch tags from all remotes.
+
+## Release
+
+5. Review commits since the last tag. Recommend a semver bump:
    - **major**: breaking/incompatible API changes
    - **minor**: new features, meaningful new behavior
    - **patch**: bug fixes, docs, refactoring with no new features
-   Present the proposed version, the bump rationale, and the commit list. Wait for user approval before continuing.
-4. Tag the new version and push the tag + commits to all remotes (origin, gitea, etc.).
-5. Generate release notes from the commits since the last tag, grouped by type (features, fixes, docs/refactoring).
-6. Create a GitHub release using `gh release create`.
-7. Create a Gitea release using `tea releases create` with the same notes.
-8. Report both release URLs and confirm all remotes are up to date.
+   Present the proposed version, bump rationale, and commit list. Wait for user approval.
+6. Tag the new version. Push the tag to all remotes (origin, gitea).
+7. Generate release notes grouped by type (features, fixes, chores).
+8. Create a GitHub release with `gh release create`.
+9. Create a Gitea release with `tea releases create` using the same notes.
+10. Report both release URLs and confirm all remotes are up to date.
