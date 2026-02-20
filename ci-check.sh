@@ -6,9 +6,13 @@ set -o pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
-echo "== CI: Format code =="
-go fmt ./...
-echo "OK: formatting complete"
+echo "== CI: Check formatting =="
+if [ -n "$(gofmt -l .)" ]; then
+  echo "ERROR: files not formatted:"
+  gofmt -l .
+  exit 1
+fi
+echo "OK: all files formatted"
 
 echo "== CI: Run go vet =="
 if ! go vet ./...; then

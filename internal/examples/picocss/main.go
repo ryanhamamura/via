@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/ryanhamamura/via"
-	// "github.com/go-via/via-plugin-picocss/picocss"
 	"github.com/ryanhamamura/via/h"
 )
 
@@ -13,11 +12,6 @@ func main() {
 
 	v.Config(via.Options{
 		DocumentTitle: "Via Counter",
-		// Plugin is placed here. Use picocss.WithOptions(pococss.Options) to add the plugin
-		// with a different color theme or to enable a classes for a wide range of colors.
-		// Plugins: []via.Plugin{
-		// 	picocss.Default,
-		// },
 	})
 
 	v.Page("/", func(c *via.Context) {

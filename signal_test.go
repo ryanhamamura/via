@@ -1,7 +1,6 @@
 package via
 
 import (
-	//	"net/http/httptest"
 	"testing"
 
 	"github.com/ryanhamamura/via/h"

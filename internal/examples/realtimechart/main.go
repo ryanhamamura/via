@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/ryanhamamura/via"
-	// "github.com/go-via/via-plugin-picocss/picocss"
 	"github.com/ryanhamamura/via/h"
 )
 
@@ -16,9 +15,6 @@ func main() {
 	v.Config(via.Options{
 		LogLevel: via.LogLevelDebug,
 		DevMode:  true,
-		Plugins:  []via.Plugin{
-			// picocss.Default,
-		},
 	})
 
 	v.AppendToHead(

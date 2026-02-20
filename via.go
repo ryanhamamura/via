@@ -439,36 +439,39 @@ func (v *V) ensureDatastarHandler() {
 	})
 }
 
+func loadDevModeMap(path string) map[string]string {
+	m := make(map[string]string)
+	file, err := os.Open(path)
+	if err != nil {
+		return m
+	}
+	defer file.Close()
+	json.NewDecoder(file).Decode(&m)
+	return m
+}
+
+func saveDevModeMap(path string, m map[string]string) error {
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return json.NewEncoder(file).Encode(m)
+}
+
 func (v *V) devModePersist(c *Context) {
 	p := filepath.Join(".via", "devmode", "ctx.json")
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		v.logFatal("failed to create directory for devmode files: %v", err)
 	}
 
-	// load persisted list from file, or empty list if file not found
-	file, err := os.Open(p)
-	ctxRegMap := make(map[string]string)
-	if err == nil {
-		json.NewDecoder(file).Decode(&ctxRegMap)
-	}
-	file.Close()
-
-	// add ctx to persisted list
+	ctxRegMap := loadDevModeMap(p)
 	if _, ok := ctxRegMap[c.id]; !ok {
 		ctxRegMap[c.id] = c.route
 	}
 
-	// write persisted list to file
-	file, err = os.Create(p)
-	if err != nil {
-		v.logErr(c, "devmode failed to percist ctx: %v", err)
-
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(ctxRegMap); err != nil {
-		v.logErr(c, "devmode failed to persist ctx")
+	if err := saveDevModeMap(p, ctxRegMap); err != nil {
+		v.logErr(c, "devmode failed to persist ctx: %v", err)
 	}
 	v.logDebug(c, "devmode persisted ctx to file")
 }
@@ -476,27 +479,11 @@ func (v *V) devModePersist(c *Context) {
 func (v *V) devModeRemovePersisted(c *Context) {
 	p := filepath.Join(".via", "devmode", "ctx.json")
 
-	// load persisted list from file, or empty list if file not found
-	file, err := os.Open(p)
-	ctxRegMap := make(map[string]string)
-	if err == nil {
-		json.NewDecoder(file).Decode(&ctxRegMap)
-	}
-	file.Close()
-
+	ctxRegMap := loadDevModeMap(p)
 	delete(ctxRegMap, c.id)
 
-	// write persisted list to file
-	file, err = os.Create(p)
-	if err != nil {
-		v.logErr(c, "devmode failed to remove percisted ctx: %v", err)
-
-	}
-	defer file.Close()
-
-	encoder := json.NewEncoder(file)
-	if err := encoder.Encode(ctxRegMap); err != nil {
-		v.logErr(c, "devmode failed to remove persisted ctx")
+	if err := saveDevModeMap(p, ctxRegMap); err != nil {
+		v.logErr(c, "devmode failed to remove persisted ctx: %v", err)
 	}
 	v.logDebug(c, "devmode removed persisted ctx from file")
 }

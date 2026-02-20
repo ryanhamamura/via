@@ -4,16 +4,11 @@ import (
 	"strconv"
 
 	"github.com/ryanhamamura/via"
-	// "github.com/go-via/via-plugin-picocss/picocss"
 	. "github.com/ryanhamamura/via/h"
 )
 
 func main() {
 	v := via.New()
-
-	v.Config(via.Options{
-		// Plugins: []via.Plugin{picocss.Default},
-	})
 
 	v.Page("/counters/{counter_id}/{start_at_step}", func(c *via.Context) {
 

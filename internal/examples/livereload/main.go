@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/ryanhamamura/via"
-	// "github.com/go-via/via-plugin-picocss/picocss"
 	"github.com/ryanhamamura/via/h"
 )
 
@@ -15,9 +14,6 @@ func main() {
 		DocumentTitle: "Live Reload Demo",
 		DevMode:       true,
 		LogLevel:      via.LogLevelDebug,
-		Plugins:       []via.Plugin{
-			// picocss.Default
-		},
 	})
 
 	v.Page("/", func(c *via.Context) {

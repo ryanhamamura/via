@@ -94,7 +94,7 @@ Available triggers:
 |--------|-------|-------|
 | `OnClick()` | `click` | |
 | `OnDblClick()` | `dblclick` | |
-| `OnChange()` | `change` | 200ms debounce |
+| `OnChange()` | `change` | |
 | `OnInput()` | `input` | No debounce |
 | `OnSubmit()` | `submit` | |
 | `OnKeyDown(key)` | `keydown` | Filtered by key name (e.g. `"Enter"`, `"Escape"`) |

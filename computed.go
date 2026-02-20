@@ -1,7 +1,6 @@
 package via
 
 import (
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -51,5 +50,5 @@ func (s *computedSignal) recompute() {
 }
 
 func (s *computedSignal) patchValue() string {
-	return fmt.Sprintf("%v", s.lastVal)
+	return s.lastVal
 }

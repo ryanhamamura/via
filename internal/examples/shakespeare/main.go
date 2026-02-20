@@ -22,6 +22,9 @@ type ShakeDB struct {
 	findByTextStmt *sql.Stmt
 }
 
+// Prepare opens shake.db, a ~22 MB SQLite database of Shakespeare's works.
+// Download from https://github.com/nicholasgasior/gopher-fizzbuzz/raw/master/shake.db
+// and place it in this directory before running.
 func (shakeDB *ShakeDB) Prepare() {
 	db, err := sql.Open("sqlite3", "shake.db")
 	if err != nil {

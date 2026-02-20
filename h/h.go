@@ -5,7 +5,7 @@
 //
 //	h.Div(
 //		h.H1(h.Text("Hello, Via")),
-//		h.P(h.Text("Pure Go. No tmplates.")),
+//		h.P(h.Text("Pure Go. No templates.")),
 //	)
 package h
 

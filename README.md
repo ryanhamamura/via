@@ -74,14 +74,13 @@ func main() {
 - **Plugin system** — `func(v *V)` hooks for integrating CSS/JS libraries
 - **Structured logging** — zerolog with configurable levels; console output in dev, JSON in production
 - **Graceful shutdown** — listens for SIGINT/SIGTERM, drains contexts, closes pub/sub
-- **Context lifecycle** — background reaper cleans up disconnected contexts; configurable TTL
 - **HTML DSL** — the `h` package provides type-safe Go-native HTML composition
 
 ## Examples
 
-The `internal/examples/` directory contains 14 runnable examples:
+The `internal/examples/` directory contains 19 runnable examples:
 
-`chatroom` · `counter` · `countercomp` · `greeter` · `keyboard` · `livereload` · `nats-chatroom` · `pathparams` · `picocss` · `plugins` · `pubsub-crud` · `realtimechart` · `session` · `shakespeare`
+`chatroom` · `counter` · `countercomp` · `effectspike` · `greeter` · `keyboard` · `livereload` · `maplibre` · `middleware` · `nats-chatroom` · `pathparams` · `picocss` · `plugins` · `pubsub-crud` · `realtimechart` · `session` · `shakespeare` · `signup` · `spa`
 
 ## Experimental
 
