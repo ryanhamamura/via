@@ -44,5 +44,8 @@ internal/examples/shakespeare/shake.db
 # NATS data directory
 data/
 
+# Standalone experiments
+nats-chatroom
+
 # Claude Code worktrees
 .claude/worktrees/
