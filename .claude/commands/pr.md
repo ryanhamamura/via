@@ -8,7 +8,7 @@ Create a PR on Gitea, wait for CI, and squash-merge it. Push code to both remote
 5. Create a Gitea PR: `tea pr create --head <branch> --base main`. Reference related issues with `#X`. Only use `Closes #X` if the PR fully resolves the issue.
 6. Wait for CI to pass: poll Gitea CI status. If CI fails, report the failure and stop — do not merge.
 7. Once CI passes, squash-merge on Gitea: `tea pr merge <index> --style squash` with a clean, semantic commit message including the PR number. No Claude attribution lines.
-8. Update local main and push to both remotes: `git checkout main && git pull gitea main && git push origin main`.
+8. Update local main and push to both remotes. If in a worktree, `main` is checked out in the primary tree, so run from there: `cd <primary-worktree> && git pull gitea main && git push origin main` (the primary worktree path is the repo root without `.claude/worktrees/…`). If not in a worktree: `git checkout main && git pull gitea main && git push origin main`.
 9. Clean up remote branches: `git push gitea --delete <branch> && git push origin --delete <branch>`.
 10. Prune refs: `git remote prune gitea && git remote prune origin`.
 11. Report the merged PR URL.
