@@ -1,4 +1,4 @@
-Create a new release for this project.
+Create a new release on Gitea. Push tags to both remotes.
 
 ## Pre-flight
 
@@ -14,8 +14,7 @@ Create a new release for this project.
    - **minor**: new features, meaningful new behavior
    - **patch**: bug fixes, docs, refactoring with no new features
    Present the proposed version, bump rationale, and commit list. Wait for user approval.
-6. Tag the new version. Push the tag to all remotes (origin, gitea).
+6. Tag the new version. Push the tag to both remotes: `git push gitea <tag> && git push origin <tag>`.
 7. Generate release notes grouped by type (features, fixes, chores).
-8. Create a GitHub release with `gh release create`.
-9. Create a Gitea release with `tea releases create` using the same notes.
-10. Report both release URLs and confirm all remotes are up to date.
+8. Create a Gitea release with `tea releases create` using the notes.
+9. Report the release URL and confirm all remotes are up to date.

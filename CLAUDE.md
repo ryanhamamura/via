@@ -7,7 +7,6 @@ All changes go through PRs:
 1. Enter a worktree (`EnterWorktree`) at session start.
 2. Make changes, commit with semantic messages.
 3. `/pr` to push, open a PR, wait for CI, and squash-merge.
-   (Or use `/pr-create` and `/pr-merge` separately for more control.)
 
 ## Releasing
 
