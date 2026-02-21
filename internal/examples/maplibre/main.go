@@ -78,10 +78,11 @@ const shipSVG = `<svg width="48" height="28" viewBox="0 0 80 44" xmlns="http://w
 func main() {
 	v := via.New()
 	v.Config(via.Options{
-		DocumentTitle: "MapLibre GL Example",
-		ServerAddress: ":7331",
-		DevMode:       true,
-		Plugins:       []via.Plugin{maplibre.Plugin},
+		DocumentTitle:   "MapLibre GL Example",
+		ServerAddress:   ":7331",
+		DevMode:         true,
+		Plugins:         []via.Plugin{maplibre.Plugin},
+		ActionRateLimit: via.RateLimitConfig{Rate: 60, Burst: 120},
 	})
 
 	// Single goroutine moves the vehicle — all clients read the same position.
