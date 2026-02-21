@@ -16,5 +16,5 @@ Create a new release on Gitea. Push tags to both remotes.
    Present the proposed version, bump rationale, and commit list. Wait for user approval.
 6. Tag the new version. Push the tag to both remotes: `git push gitea <tag> && git push origin <tag>`.
 7. Generate release notes grouped by type (features, fixes, chores).
-8. Create a Gitea release with `tea releases create` using the notes.
+8. Create a Gitea release with `tea releases create --login gitea --repo ryan/via` using the notes.
 9. Report the release URL and confirm all remotes are up to date.
