@@ -273,7 +273,7 @@ func markerBodyJS(mapID, markerID string, mk Marker) string {
 func dragHandlerJS(mapID string, mk Marker) string {
 	// Shared writeback logic extracted into a local function for both handlers.
 	return fmt.Sprintf(
-		`var _raf=0;`+
+		`var _raf=0;mk._dragging=false;`+
 			`function _wb(){`+
 			`var pos=mk.getLngLat();`+
 			`var el=document.getElementById(%[1]s);if(!el)return;`+
@@ -284,8 +284,9 @@ func dragHandlerJS(mapID string, mk Marker) string {
 			`if(sig===%[3]s){inp.value=pos.lat;inp.dispatchEvent(new Event('input',{bubbles:true}))}`+
 			`});`+
 			`}`+
+			`mk.on('dragstart',function(){mk._dragging=true;});`+
 			`mk.on('drag',function(){if(_raf)return;_raf=requestAnimationFrame(function(){_raf=0;_wb()});});`+
-			`mk.on('dragend',function(){cancelAnimationFrame(_raf);_raf=0;_wb()});`,
+			`mk.on('dragend',function(){cancelAnimationFrame(_raf);_raf=0;_wb();mk._dragging=false;});`,
 		jsonStr("_vwrap_"+mapID),
 		jsonStr(mk.LngSignal.ID()),
 		jsonStr(mk.LatSignal.ID()),
@@ -321,7 +322,7 @@ func markerEffectExpr(mapID, markerID string, mk Marker) string {
 	}
 	b.WriteString(fmt.Sprintf(
 		`var m=window.__via_maps&&window.__via_maps[%s];`+
-			`if(m&&m._via_markers[%[2]s]){`+
+			`if(m&&m._via_markers[%[2]s]&&!m._via_markers[%[2]s]._dragging){`+
 			`m._via_markers[%[2]s].setLngLat([lng,lat])`,
 		jsonStr(mapID), jsonStr(markerID)))
 	if mk.RotationSignal != nil && mk.Element != "" {
