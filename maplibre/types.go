@@ -324,6 +324,21 @@ type Marker struct {
 
 	// RotationSignal drives marker rotation reactively. When set, Rotation is ignored.
 	RotationSignal *via.Signal
+
+	// Offset is a pixel offset from the anchor point as [x, y].
+	Offset [2]float64
+
+	// Scale is a scaling factor for the default marker pin (0 = omit, MapLibre default 1).
+	Scale float64
+
+	// Opacity is the marker opacity 0–1 (0 = omit, MapLibre default 1).
+	Opacity float64
+
+	// OpacityWhenCovered is the marker opacity when behind 3D terrain (0 = omit).
+	OpacityWhenCovered float64
+
+	// ClassName is a CSS class added to the marker container element.
+	ClassName string
 }
 
 // Popup describes a map popup.
@@ -335,6 +350,23 @@ type Popup struct {
 	LngLat          LngLat
 	HideCloseButton bool // true removes the close button (MapLibre shows it by default)
 	MaxWidth        string
+
+	// CloseOnClick controls whether the popup closes on map click.
+	// nil = MapLibre default (true).
+	CloseOnClick *bool
+
+	// CloseOnMove controls whether the popup closes on map move.
+	// nil = MapLibre default (false).
+	CloseOnMove *bool
+
+	// Anchor forces the popup anchor position ("top", "bottom", "left", "right", etc.).
+	Anchor string
+
+	// Offset is a pixel offset from the anchor as [x, y].
+	Offset [2]float64
+
+	// ClassName is a CSS class added to the popup container.
+	ClassName string
 }
 
 // --- Event data ---
@@ -354,14 +386,40 @@ type sourceEntry struct {
 	js string
 }
 
+// MarkerHandle is returned by AddMarker and allows subscribing to marker events.
+type MarkerHandle struct {
+	markerID string
+	m        *Map
+	events   []markerEventEntry
+}
+
+type markerEventEntry struct {
+	event  string
+	signal *via.Signal
+}
+
 type markerEntry struct {
 	id     string
 	marker Marker
+	handle *MarkerHandle
+}
+
+// PopupHandle is returned by ShowPopup and allows subscribing to popup events.
+type PopupHandle struct {
+	popupID string
+	m       *Map
+	events  []popupEventEntry
+}
+
+type popupEventEntry struct {
+	event  string
+	signal *via.Signal
 }
 
 type popupEntry struct {
-	id    string
-	popup Popup
+	id     string
+	popup  Popup
+	handle *PopupHandle
 }
 
 type eventEntry struct {

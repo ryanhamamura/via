@@ -158,15 +158,21 @@ func main() {
 		m.AddMarker("sf", maplibre.Marker{
 			LngLat: maplibre.LngLat{Lng: -122.4194, Lat: 37.7749},
 			Color:  "#e74c3c",
+			Scale:  1.3,
 			Popup: &maplibre.Popup{
 				Content: "<strong>San Francisco</strong><p>The Golden City</p>",
 			},
 		})
+		noCloseOnClick := false
 		m.AddMarker("oak", maplibre.Marker{
-			LngLat: maplibre.LngLat{Lng: -122.2711, Lat: 37.8044},
-			Color:  "#2ecc71",
+			LngLat:  maplibre.LngLat{Lng: -122.2711, Lat: 37.8044},
+			Color:   "#2ecc71",
+			Opacity: 0.7,
 			Popup: &maplibre.Popup{
-				Content: "<strong>Oakland</strong>",
+				Content:      "<strong>Oakland</strong>",
+				Anchor:       "bottom",
+				Offset:       [2]float64{0, -10},
+				CloseOnClick: &noCloseOnClick,
 			},
 		})
 

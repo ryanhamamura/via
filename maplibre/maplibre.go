@@ -135,6 +135,25 @@ func (m *Map) Element(extra ...h.H) h.H {
 				)
 			}
 		}
+		// Hidden inputs for marker event signals
+		if me.handle != nil {
+			for _, ev := range me.handle.events {
+				children = append(children,
+					h.Input(h.Type("hidden"), ev.signal.Bind()),
+				)
+			}
+		}
+	}
+
+	// Hidden inputs for popup event signals
+	for _, pe := range m.popups {
+		if pe.handle != nil {
+			for _, ev := range pe.handle.events {
+				children = append(children,
+					h.Input(h.Type("hidden"), ev.signal.Bind()),
+				)
+			}
+		}
 	}
 
 	children = append(children, extra...)
@@ -290,13 +309,43 @@ func (m *Map) SetLayoutProperty(layerID, name string, value any) {
 // --- Marker methods ---
 
 // AddMarker adds or replaces a marker on the map.
-func (m *Map) AddMarker(id string, marker Marker) {
+// The returned MarkerHandle can be used to subscribe to marker-level events.
+func (m *Map) AddMarker(id string, marker Marker) *MarkerHandle {
+	h := &MarkerHandle{markerID: id, m: m}
 	if !m.rendered {
-		m.markers = append(m.markers, markerEntry{id: id, marker: marker})
-		return
+		m.markers = append(m.markers, markerEntry{id: id, marker: marker, handle: h})
+		return h
 	}
-	js := addMarkerJS(m.id, id, marker)
+	js := addMarkerJS(m.id, id, marker, h.events)
 	m.ctx.ExecScript(js)
+	return h
+}
+
+// OnClick returns a MapEvent that fires when this marker is clicked.
+func (h *MarkerHandle) OnClick() *MapEvent {
+	return h.on("click")
+}
+
+// OnDragStart returns a MapEvent that fires when dragging starts.
+func (h *MarkerHandle) OnDragStart() *MapEvent {
+	return h.on("dragstart")
+}
+
+// OnDrag returns a MapEvent that fires during dragging.
+func (h *MarkerHandle) OnDrag() *MapEvent {
+	return h.on("drag")
+}
+
+// OnDragEnd returns a MapEvent that fires when dragging ends.
+func (h *MarkerHandle) OnDragEnd() *MapEvent {
+	return h.on("dragend")
+}
+
+func (h *MarkerHandle) on(event string) *MapEvent {
+	sig := h.m.ctx.Signal("")
+	ev := &MapEvent{signal: sig}
+	h.events = append(h.events, markerEventEntry{event: event, signal: sig})
+	return ev
 }
 
 // RemoveMarker removes a marker from the map.
@@ -316,13 +365,33 @@ func (m *Map) RemoveMarker(id string) {
 // --- Popup methods ---
 
 // ShowPopup shows a standalone popup on the map.
-func (m *Map) ShowPopup(id string, popup Popup) {
+// The returned PopupHandle can be used to subscribe to popup events.
+func (m *Map) ShowPopup(id string, popup Popup) *PopupHandle {
+	ph := &PopupHandle{popupID: id, m: m}
 	if !m.rendered {
-		m.popups = append(m.popups, popupEntry{id: id, popup: popup})
-		return
+		m.popups = append(m.popups, popupEntry{id: id, popup: popup, handle: ph})
+		return ph
 	}
-	js := showPopupJS(m.id, id, popup)
+	js := showPopupJS(m.id, id, popup, ph.events)
 	m.ctx.ExecScript(js)
+	return ph
+}
+
+// OnOpen returns a MapEvent that fires when the popup opens.
+func (ph *PopupHandle) OnOpen() *MapEvent {
+	return ph.on("open")
+}
+
+// OnClose returns a MapEvent that fires when the popup closes.
+func (ph *PopupHandle) OnClose() *MapEvent {
+	return ph.on("close")
+}
+
+func (ph *PopupHandle) on(event string) *MapEvent {
+	sig := ph.m.ctx.Signal("")
+	ev := &MapEvent{signal: sig}
+	ph.events = append(ph.events, popupEventEntry{event: event, signal: sig})
+	return ev
 }
 
 // ClosePopup closes a standalone popup on the map.

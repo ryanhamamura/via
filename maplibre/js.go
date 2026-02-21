@@ -113,9 +113,19 @@ func initScript(m *Map) string {
 		}
 		for _, me := range m.markers {
 			b.WriteString(markerBodyJS(m.id, me.id, me.marker))
+			if me.handle != nil {
+				for _, ev := range me.handle.events {
+					b.WriteString(markerEventListenerJS(m.id, ev))
+				}
+			}
 		}
 		for _, pe := range m.popups {
 			b.WriteString(popupBodyJS(pe.id, pe.popup))
+			if pe.handle != nil {
+				for _, ev := range pe.handle.events {
+					b.WriteString(popupEventListenerJS(m.id, ev))
+				}
+			}
 		}
 		for _, ce := range m.controls {
 			b.WriteString(controlBodyJS(ce.id, ce.ctrl))
@@ -209,6 +219,21 @@ func markerBodyJS(mapID, markerID string, mk Marker) string {
 	if mk.Draggable {
 		opts += `draggable:true,`
 	}
+	if mk.Offset != [2]float64{} {
+		opts += fmt.Sprintf(`offset:[%s,%s],`, formatFloat(mk.Offset[0]), formatFloat(mk.Offset[1]))
+	}
+	if mk.Scale != 0 {
+		opts += fmt.Sprintf(`scale:%s,`, formatFloat(mk.Scale))
+	}
+	if mk.Opacity != 0 {
+		opts += fmt.Sprintf(`opacity:%s,`, formatFloat(mk.Opacity))
+	}
+	if mk.OpacityWhenCovered != 0 {
+		opts += fmt.Sprintf(`opacityWhenCovered:%s,`, formatFloat(mk.OpacityWhenCovered))
+	}
+	if mk.ClassName != "" {
+		opts += fmt.Sprintf(`className:%s,`, jsonStr(mk.ClassName))
+	}
 	opts += "}"
 
 	// Determine initial position
@@ -235,18 +260,21 @@ func markerBodyJS(mapID, markerID string, mk Marker) string {
 	}
 	b.WriteString(fmt.Sprintf(`mk.addTo(map);map._via_markers[%s]=mk;`, jsonStr(markerID)))
 
-	// Dragend → signal writeback
+	// Drag → throttled live signal writeback + dragend final writeback
 	if mk.Draggable && mk.LngSignal != nil && mk.LatSignal != nil {
-		b.WriteString(dragendHandlerJS(mapID, markerID, mk))
+		b.WriteString(dragHandlerJS(mapID, mk))
 	}
 
 	return b.String()
 }
 
-// dragendHandlerJS generates JS that writes marker position back to signal hidden inputs on dragend.
-func dragendHandlerJS(mapID, markerID string, mk Marker) string {
+// dragHandlerJS generates JS that writes marker position to signal hidden inputs
+// during drag (throttled via requestAnimationFrame) and on dragend (unthrottled).
+func dragHandlerJS(mapID string, mk Marker) string {
+	// Shared writeback logic extracted into a local function for both handlers.
 	return fmt.Sprintf(
-		`mk.on('dragend',function(){`+
+		`var _raf=0;`+
+			`function _wb(){`+
 			`var pos=mk.getLngLat();`+
 			`var el=document.getElementById(%[1]s);if(!el)return;`+
 			`var inputs=el.querySelectorAll('input[data-bind]');`+
@@ -255,10 +283,29 @@ func dragendHandlerJS(mapID, markerID string, mk Marker) string {
 			`if(sig===%[2]s){inp.value=pos.lng;inp.dispatchEvent(new Event('input',{bubbles:true}))}`+
 			`if(sig===%[3]s){inp.value=pos.lat;inp.dispatchEvent(new Event('input',{bubbles:true}))}`+
 			`});`+
-			`});`,
+			`}`+
+			`mk.on('drag',function(){if(_raf)return;_raf=requestAnimationFrame(function(){_raf=0;_wb()});});`+
+			`mk.on('dragend',function(){cancelAnimationFrame(_raf);_raf=0;_wb()});`,
 		jsonStr("_vwrap_"+mapID),
 		jsonStr(mk.LngSignal.ID()),
 		jsonStr(mk.LatSignal.ID()),
+	)
+}
+
+// markerEventListenerJS generates JS for a marker event listener.
+// Assumes `mk` (the marker) is in scope.
+func markerEventListenerJS(mapID string, ev markerEventEntry) string {
+	return fmt.Sprintf(
+		`mk.on(%[1]s,function(){`+
+			`var pos=mk.getLngLat();`+
+			`var d={lngLat:{Lng:pos.lng,Lat:pos.lat},point:[0,0]};`+
+			`var el=document.getElementById(%[2]s);if(!el)return;`+
+			`var inp=el.querySelector('input[data-bind=%[3]s]');`+
+			`if(inp){inp.value=JSON.stringify(d);inp.dispatchEvent(new Event('input',{bubbles:true}))}`+
+			`});`,
+		jsonStr(ev.event),
+		jsonStr("_vwrap_"+mapID),
+		jsonStr(ev.signal.ID()),
 	)
 }
 
@@ -295,7 +342,7 @@ func markerEffectExpr(mapID, markerID string, mk Marker) string {
 }
 
 // addMarkerJS generates a self-contained IIFE to add a marker post-render.
-func addMarkerJS(mapID, markerID string, mk Marker) string {
+func addMarkerJS(mapID, markerID string, mk Marker, events []markerEventEntry) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(
 		`(function(){var map=window.__via_maps&&window.__via_maps[%s];if(!map)return;`,
@@ -305,6 +352,9 @@ func addMarkerJS(mapID, markerID string, mk Marker) string {
 		`if(map._via_markers[%[1]s]){map._via_markers[%[1]s].remove();delete map._via_markers[%[1]s];}`,
 		jsonStr(markerID)))
 	b.WriteString(markerBodyJS(mapID, markerID, mk))
+	for _, ev := range events {
+		b.WriteString(markerEventListenerJS(mapID, ev))
+	}
 	b.WriteString(`})()`)
 	return b.String()
 }
@@ -327,7 +377,7 @@ func popupBodyJS(popupID string, p Popup) string {
 }
 
 // showPopupJS generates a self-contained IIFE to show a popup post-render.
-func showPopupJS(mapID, popupID string, p Popup) string {
+func showPopupJS(mapID, popupID string, p Popup, events []popupEventEntry) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf(
 		`(function(){var map=window.__via_maps&&window.__via_maps[%s];if(!map)return;`,
@@ -337,6 +387,9 @@ func showPopupJS(mapID, popupID string, p Popup) string {
 		`if(map._via_popups[%[1]s]){map._via_popups[%[1]s].remove();delete map._via_popups[%[1]s];}`,
 		jsonStr(popupID)))
 	b.WriteString(popupBodyJS(popupID, p))
+	for _, ev := range events {
+		b.WriteString(popupEventListenerJS(mapID, ev))
+	}
 	b.WriteString(`})()`)
 	return b.String()
 }
@@ -357,9 +410,48 @@ func popupConstructorJS(p Popup, varName string) string {
 	if p.MaxWidth != "" {
 		opts += fmt.Sprintf(`maxWidth:%s,`, jsonStr(p.MaxWidth))
 	}
+	if p.CloseOnClick != nil {
+		if *p.CloseOnClick {
+			opts += `closeOnClick:true,`
+		} else {
+			opts += `closeOnClick:false,`
+		}
+	}
+	if p.CloseOnMove != nil {
+		if *p.CloseOnMove {
+			opts += `closeOnMove:true,`
+		} else {
+			opts += `closeOnMove:false,`
+		}
+	}
+	if p.Anchor != "" {
+		opts += fmt.Sprintf(`anchor:%s,`, jsonStr(p.Anchor))
+	}
+	if p.Offset != [2]float64{} {
+		opts += fmt.Sprintf(`offset:[%s,%s],`, formatFloat(p.Offset[0]), formatFloat(p.Offset[1]))
+	}
+	if p.ClassName != "" {
+		opts += fmt.Sprintf(`className:%s,`, jsonStr(p.ClassName))
+	}
 	opts += "}"
 	return fmt.Sprintf(`var %s=new maplibregl.Popup(%s).setHTML(%s);`,
 		varName, opts, jsonStr(p.Content))
+}
+
+// popupEventListenerJS generates JS for a popup event listener.
+// Assumes `p` (the popup) is in scope.
+func popupEventListenerJS(mapID string, ev popupEventEntry) string {
+	// open/close carry no spatial data — write a timestamp as change trigger.
+	return fmt.Sprintf(
+		`p.on(%[1]s,function(){`+
+			`var el=document.getElementById(%[2]s);if(!el)return;`+
+			`var inp=el.querySelector('input[data-bind=%[3]s]');`+
+			`if(inp){inp.value=Date.now();inp.dispatchEvent(new Event('input',{bubbles:true}))}`+
+			`});`,
+		jsonStr(ev.event),
+		jsonStr("_vwrap_"+mapID),
+		jsonStr(ev.signal.ID()),
+	)
 }
 
 // --- Control JS ---
